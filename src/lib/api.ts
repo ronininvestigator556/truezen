@@ -6,6 +6,8 @@ import type {
   Health,
   Preset,
   PresetSummary,
+  PresetStat,
+  SessionRow,
   Timeline,
 } from "./types";
 
@@ -24,7 +26,8 @@ export const api = {
 
   play: () => invoke<void>("play"),
   pause: () => invoke<void>("pause"),
-  stop: () => invoke<void>("stop"),
+  /** Resolves with the finished session id when it was long enough to rate. */
+  stop: () => invoke<number | null>("stop"),
   seek: (seconds: number) => invoke<void>("seek", { seconds }),
 
   setMasterGain: (gain: number) => invoke<void>("set_master_gain", { gain }),
@@ -50,6 +53,13 @@ export const api = {
   setTrackLatched: (track: number, latched: boolean) =>
     invoke<void>("set_track_latched", { track, latched }),
   unlatchAll: () => invoke<void>("unlatch_all"),
+
+  journalRecent: (limit: number) => invoke<SessionRow[]>("journal_recent", { limit }),
+  journalStats: () => invoke<PresetStat[]>("journal_stats"),
+  journalRate: (id: number, rating: number, note: string | null) =>
+    invoke<void>("journal_rate", { id, rating, note }),
+  journalDiscard: (id: number) => invoke<void>("journal_discard", { id }),
+  journalReplay: (id: number) => invoke<Preset>("journal_replay", { id }),
 
   poll: () => invoke<Frame>("poll"),
   health: () => invoke<Health>("health"),

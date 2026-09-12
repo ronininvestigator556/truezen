@@ -7,7 +7,10 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::Serialize;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use truezen_engine::layer::{LayerConfig, LayerKind};
 use truezen_engine::preset::{Goal, Preset};
 use truezen_engine::timeline::{LayerParam, Timeline};
@@ -15,8 +18,19 @@ use truezen_engine::Meters;
 use truezen_host::export::{render_to_wav, ExportOptions};
 use truezen_host::{AudioHost, DeviceInfo, HostStatus, Stats};
 
+mod journal;
+mod platform;
 mod store;
+use journal::{Journal, PresetStat, SessionRow};
+use platform::StayAwake;
 use store::{Source, Store};
+
+/// Sessions shorter than this are not worth a row in the journal -- they are
+/// almost always "pressed play, changed my mind".
+const MIN_SESSION_S: f64 = 60.0;
+/// How often playback progress is written back, so a crash mid-session still
+/// leaves a mostly-accurate record without hammering the database.
+const PROGRESS_INTERVAL_S: f64 = 10.0;
 
 /// A failure the UI can show. Commands return `Result<_, String>` because
 /// Tauri needs the error serialisable and there is nothing the frontend can do
@@ -32,13 +46,30 @@ struct App {
     /// True when `current` has been edited since it was loaded or saved.
     dirty: bool,
     store: Store,
+    journal: Journal,
+    /// Why the journal is unavailable, if it is. Playback continues either
+    /// way -- a broken database must not stop the audio.
+    journal_error: Option<String>,
+    active_session: Option<i64>,
+    /// Position at the last progress write.
+    last_progress_s: f64,
+    awake: StayAwake,
 }
 
 impl App {
-    fn new(store: Store) -> Self {
+    fn new(store: Store, journal_path: &std::path::Path) -> Self {
         let (host, host_error) = match AudioHost::spawn(None) {
             Ok(h) => (Some(h), None),
             Err(e) => (None, Some(e.to_string())),
+        };
+        let (journal, journal_error) = match Journal::open(journal_path) {
+            Ok(j) => (j, None),
+            // Fall back to memory so the rest of the app works; the error is
+            // surfaced rather than silently losing every session.
+            Err(e) => (
+                Journal::in_memory().expect("an in-memory journal cannot fail"),
+                Some(e),
+            ),
         };
         Self {
             host,
@@ -46,7 +77,48 @@ impl App {
             current: None,
             dirty: false,
             store,
+            journal,
+            journal_error,
+            active_session: None,
+            last_progress_s: 0.0,
+            awake: StayAwake::default(),
         }
+    }
+
+    /// Open a journal entry for whatever is loaded, if one is not already open.
+    fn begin_session(&mut self) {
+        if self.active_session.is_some() {
+            return;
+        }
+        let Some(preset) = self.current.as_ref() else { return };
+        match self.journal.start(preset) {
+            Ok(id) => {
+                self.active_session = Some(id);
+                self.last_progress_s = 0.0;
+            }
+            Err(e) => self.journal_error = Some(e),
+        }
+    }
+
+    /// Close the open entry. Returns its id when it was long enough to keep,
+    /// so the UI knows whether to ask how it went.
+    fn end_session(&mut self, completed: bool) -> Option<i64> {
+        let id = self.active_session.take()?;
+        let listened = self
+            .host
+            .as_ref()
+            .map(|h| h.meters().position_s)
+            .unwrap_or(0.0)
+            .max(self.last_progress_s);
+
+        if listened < MIN_SESSION_S {
+            let _ = self.journal.discard(id);
+            return None;
+        }
+        if let Err(e) = self.journal.finish(id, listened, completed) {
+            self.journal_error = Some(e);
+        }
+        Some(id)
     }
 
     /// Record that the live preset no longer matches what is on disk.
@@ -129,6 +201,8 @@ fn goals() -> Vec<String> {
 #[tauri::command]
 fn load_preset(id: String, state: State) -> Cmd<Preset> {
     with(&state, |app| {
+        // Close out whatever was playing before switching away from it.
+        app.end_session(false);
         let (preset, _) = app.store.get(&id).ok_or_else(|| format!("no preset '{id}'"))?;
         preset.validate()?;
         app.host()?.load_preset(preset.clone()).map_err(|e| e.to_string())?;
@@ -257,17 +331,73 @@ fn current_preset(state: State) -> Option<Preset> {
 
 #[tauri::command]
 fn play(state: State) -> Cmd<()> {
-    with(&state, |a| a.host()?.play().map_err(|e| e.to_string()))
+    with(&state, |a| {
+        a.host()?.play().map_err(|e| e.to_string())?;
+        a.begin_session();
+        // A long session is a long stretch with no keyboard or mouse, which
+        // is exactly what the idle timer sleeps on.
+        a.awake.engage();
+        Ok(())
+    })
 }
 
 #[tauri::command]
 fn pause(state: State) -> Cmd<()> {
-    with(&state, |a| a.host()?.pause().map_err(|e| e.to_string()))
+    with(&state, |a| {
+        a.host()?.pause().map_err(|e| e.to_string())?;
+        a.awake.release();
+        // The journal entry stays open: a pause is usually a resume.
+        Ok(())
+    })
+}
+
+/// Returns the finished session's id when it was long enough to be worth
+/// rating, so the UI can ask how it went.
+#[tauri::command]
+fn stop(state: State) -> Cmd<Option<i64>> {
+    with(&state, |a| {
+        a.host()?.stop().map_err(|e| e.to_string())?;
+        a.awake.release();
+        Ok(a.end_session(false))
+    })
+}
+
+// --- journal -------------------------------------------------------------
+
+#[tauri::command]
+fn journal_recent(limit: i64, state: State) -> Cmd<Vec<SessionRow>> {
+    with(&state, |a| a.journal.recent(limit.clamp(1, 500)))
 }
 
 #[tauri::command]
-fn stop(state: State) -> Cmd<()> {
-    with(&state, |a| a.host()?.stop().map_err(|e| e.to_string()))
+fn journal_stats(state: State) -> Cmd<Vec<PresetStat>> {
+    with(&state, |a| a.journal.stats())
+}
+
+#[tauri::command]
+fn journal_rate(id: i64, rating: i64, note: Option<String>, state: State) -> Cmd<()> {
+    with(&state, |a| a.journal.rate(id, rating, note.as_deref()))
+}
+
+#[tauri::command]
+fn journal_discard(id: i64, state: State) -> Cmd<()> {
+    with(&state, |a| a.journal.discard(id))
+}
+
+/// Load the preset exactly as it was for a past session.
+#[tauri::command]
+fn journal_replay(id: i64, state: State) -> Cmd<Preset> {
+    with(&state, |a| {
+        let preset = a
+            .journal
+            .snapshot(id)?
+            .ok_or("that session is no longer in the journal")?;
+        a.host()?.load_preset(preset.clone()).map_err(|e| e.to_string())?;
+        a.current = Some(preset.clone());
+        // It came from history, not the library, so it is unsaved by nature.
+        a.dirty = true;
+        Ok(preset)
+    })
 }
 
 #[tauri::command]
@@ -564,17 +694,44 @@ struct Frame {
     wave: Vec<f32>,
     /// Slow peak envelope, long enough a window to see the beat pulse.
     env: Vec<f32>,
+    /// Set for one poll when a session just ran to its end, so the UI can ask
+    /// how it went.
+    finished_session: Option<i64>,
+    recording: bool,
+    stay_awake: bool,
 }
 
 #[tauri::command]
 fn poll(state: State) -> Cmd<Frame> {
     with(&state, |a| {
-        let host = a.host()?;
-        let scope = host.scope();
+        let (meters, scope) = {
+            let host = a.host()?;
+            (host.meters(), host.scope())
+        };
+
+        let mut finished_session = None;
+        if a.active_session.is_some() {
+            if meters.finished {
+                // The timeline ran to its end rather than being stopped.
+                a.awake.release();
+                finished_session = a.end_session(true);
+            } else if meters.position_s - a.last_progress_s >= PROGRESS_INTERVAL_S {
+                a.last_progress_s = meters.position_s;
+                if let Some(id) = a.active_session {
+                    if let Err(e) = a.journal.progress(id, meters.position_s) {
+                        a.journal_error = Some(e);
+                    }
+                }
+            }
+        }
+
         Ok(Frame {
-            meters: host.meters(),
+            meters,
             wave: scope.wave.to_vec(),
             env: scope.env.to_vec(),
+            finished_session,
+            recording: a.active_session.is_some(),
+            stay_awake: a.awake.engaged(),
         })
     })
 }
@@ -627,18 +784,170 @@ fn select_device(id: Option<String>, state: State) -> Cmd<()> {
     })
 }
 
+/// Toggle playback from outside the window -- the tray or a hotkey.
+///
+/// Goes through the same paths as the buttons, so the journal and the wake
+/// lock stay in step no matter where the command came from.
+fn toggle_playback(app: &tauri::AppHandle) {
+    let state = app.state::<Mutex<App>>();
+    let Ok(mut a) = state.lock() else { return };
+    let playing = a.host.as_ref().is_some_and(|h| h.meters().playing);
+    if playing {
+        if let Ok(h) = a.host() {
+            let _ = h.pause();
+        }
+        a.awake.release();
+    } else {
+        if let Ok(h) = a.host() {
+            let _ = h.play();
+        }
+        a.begin_session();
+        a.awake.engage();
+    }
+}
+
+fn stop_playback(app: &tauri::AppHandle) {
+    let state = app.state::<Mutex<App>>();
+    let Ok(mut a) = state.lock() else { return };
+    if let Ok(h) = a.host() {
+        let _ = h.stop();
+    }
+    a.awake.release();
+    a.end_session(false);
+}
+
+fn show_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// A tray entry so a running session can be paused without hunting for the
+/// window, and so the time left is visible at a glance.
+fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let toggle = MenuItem::with_id(app, "toggle", "Play / Pause", true, None::<&str>)?;
+    let stop = MenuItem::with_id(app, "stop", "Stop", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Show TrueZen", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[&toggle, &stop, &PredefinedMenuItem::separator(app)?, &show, &quit],
+    )?;
+
+    let mut builder = TrayIconBuilder::new()
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .tooltip("TrueZen")
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "toggle" => toggle_playback(app),
+            "stop" => stop_playback(app),
+            "show" => show_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        });
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon);
+    }
+    let tray = builder.build(app)?;
+
+    // Keep the tooltip showing what is playing and how long is left.
+    let handle = app.handle().clone();
+    std::thread::Builder::new()
+        .name("truezen-tray".into())
+        .spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let text = {
+                let state = handle.state::<Mutex<App>>();
+                let Ok(a) = state.lock() else { continue };
+                match (a.host.as_ref(), a.current.as_ref()) {
+                    (Some(h), Some(p)) => {
+                        let m = h.meters();
+                        if !m.playing {
+                            format!("TrueZen — {} (paused)", p.name)
+                        } else if m.duration_s > 0.0 {
+                            let left = (m.duration_s - m.position_s).max(0.0);
+                            format!(
+                                "TrueZen — {} · {:.0}:{:02.0} left",
+                                p.name,
+                                (left / 60.0).floor(),
+                                left % 60.0
+                            )
+                        } else {
+                            format!("TrueZen — {}", p.name)
+                        }
+                    }
+                    _ => "TrueZen".to_string(),
+                }
+            };
+            let _ = tray.set_tooltip(Some(text));
+        })?;
+
+    Ok(())
+}
+
+/// Deliberately not Cmd/Ctrl+Shift: those collide with common app shortcuts,
+/// and a hotkey that steals Spotlight or a text-editing chord is worse than
+/// no hotkey. Ctrl+Alt is largely free on both platforms.
+const HOTKEY_MODS: Modifiers = Modifiers::CONTROL.union(Modifiers::ALT);
+
+fn register_hotkeys(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let toggle = Shortcut::new(Some(HOTKEY_MODS), Code::Space);
+    // A letter rather than punctuation: Ctrl+Alt+. is awkward to reach and
+    // did not reliably register as a system hotkey in testing.
+    let stop = Shortcut::new(Some(HOTKEY_MODS), Code::KeyS);
+
+    app.handle().plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(move |app, shortcut, event| {
+                // Fires on press and release; acting on both would toggle twice.
+                if event.state() != ShortcutState::Pressed {
+                    return;
+                }
+                if shortcut == &toggle {
+                    toggle_playback(app);
+                } else if shortcut == &stop {
+                    stop_playback(app);
+                }
+            })
+            .build(),
+    )?;
+
+    // A shortcut another app already owns is a warning, not a failure.
+    let shortcuts = app.global_shortcut();
+    if let Err(e) = shortcuts.register(toggle) {
+        eprintln!("could not register the play/pause hotkey: {e}");
+    }
+    if let Err(e) = shortcuts.register(stop) {
+        eprintln!("could not register the stop hotkey: {e}");
+    }
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Resolved here rather than in App::new because the config
             // directory is only known once Tauri has a handle.
-            let dir: PathBuf = app
+            let config = app
                 .path()
                 .app_config_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("presets");
-            app.manage(Mutex::new(App::new(Store::new(dir))));
+                .unwrap_or_else(|_| PathBuf::from("."));
+            app.manage(Mutex::new(App::new(
+                Store::new(config.join("presets")),
+                &config.join("journal.sqlite"),
+            )));
+
+            // Neither of these is essential; the app is still usable if the
+            // platform refuses them.
+            if let Err(e) = build_tray(app) {
+                eprintln!("could not create the tray icon: {e}");
+            }
+            if let Err(e) = register_hotkeys(app) {
+                eprintln!("could not register global hotkeys: {e}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -672,6 +981,11 @@ pub fn run() {
             health,
             list_devices,
             select_device,
+            journal_recent,
+            journal_stats,
+            journal_rate,
+            journal_discard,
+            journal_replay,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start TrueZen");

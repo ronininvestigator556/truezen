@@ -18,7 +18,7 @@ most sessions from one click on a preset.
 | 4 | Timeline editor + Play view | done |
 | 5 | Preset library, import/export | done |
 | 6 | File layers + WAV export | done |
-| 7 | Journal, tray, hotkeys | |
+| 7 | Journal, tray, hotkeys, sleep inhibition | done |
 | 8 | Packaging + CI | |
 
 ## Layout
@@ -109,6 +109,36 @@ The same renderer backs the CLI:
 cargo run --release -p truezen-render -- render deep-theta -o session.wav
 ```
 
+## The journal
+
+Anything you listen to for more than a minute is recorded: which preset, how
+long, whether it ran to the end, and — if you answer the one question it asks
+afterwards — how it went. The **Journal** view totals that per preset, so
+"which of these actually works for me" has an answer built from your own
+sessions rather than from the descriptions.
+
+Each entry stores the preset *as it was at the time*, so **Load** brings back
+exactly what you heard even if you have edited or deleted it since.
+
+It lives in `journal.sqlite` beside your presets.
+
+## While a session runs
+
+TrueZen holds a system wake assertion so the machine does not idle-sleep
+mid-session. The display is deliberately left free to sleep — a dark screen is
+welcome, only the audio needs to keep going.
+
+There is a tray icon with play/pause, stop, and the time remaining, and two
+global hotkeys:
+
+| | |
+|---|---|
+| `Ctrl+Alt+Space` | play / pause |
+| `Ctrl+Alt+S` | stop |
+
+Deliberately not Cmd/Ctrl+Shift chords: a hotkey that steals Spotlight or a
+text-editing shortcut is worse than no hotkey.
+
 ## Your own presets
 
 Every edit in the Lab marks the session unsaved. **Save** writes it to your
@@ -126,7 +156,7 @@ silently replacing what you already had.
 ## Tests
 
 ```sh
-cargo test --release                          # 96 tests, no hardware needed
+cargo test --release                          # 104 tests, no hardware needed
 cargo test --release -p truezen-host -- --ignored   # 8 tests, needs an audio device
 ```
 

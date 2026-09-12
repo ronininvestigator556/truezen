@@ -3,7 +3,9 @@
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { api } from "./lib/api";
   import { clock } from "./lib/curve";
+  import JournalView from "./lib/components/JournalView.svelte";
   import LibraryBar from "./lib/components/LibraryBar.svelte";
+  import RatePrompt from "./lib/components/RatePrompt.svelte";
   import LayerCard from "./lib/components/LayerCard.svelte";
   import NumberField from "./lib/components/NumberField.svelte";
   import PlayView from "./lib/components/PlayView.svelte";
@@ -18,6 +20,8 @@
     type Meters,
     type Preset,
     type PresetSource,
+    type PresetStat,
+    type SessionRow,
     type PresetSummary,
     type Timeline,
   } from "./lib/types";
@@ -25,7 +29,7 @@
   const SAFETY_KEY = "truezen.safety.ack.v1";
   const VIEW_KEY = "truezen.view";
 
-  type View = "play" | "lab";
+  type View = "play" | "lab" | "journal";
 
   let presets = $state<PresetSummary[]>([]);
   let preset = $state<Preset | null>(null);
@@ -43,6 +47,11 @@
   let libraryDir = $state("");
   let notice = $state<string | null>(null);
   let exporting = $state<number | null>(null);
+  let sessions = $state<SessionRow[]>([]);
+  let stats = $state<PresetStat[]>([]);
+  /** The session awaiting a rating, and the preset it used. */
+  let toRate = $state<{ id: number; name: string } | null>(null);
+  let recording = $state(false);
 
   let playing = $derived(meters?.playing ?? false);
   let sampleRate = $derived(health?.status.sampleRate || 48000);
@@ -59,7 +68,12 @@
   $effect(() => {
     acknowledged = localStorage.getItem(SAFETY_KEY) === "1";
     const saved = localStorage.getItem(VIEW_KEY);
-    if (saved === "play" || saved === "lab") view = saved;
+    if (saved === "play" || saved === "lab" || saved === "journal") view = saved;
+
+    // The journal is fetched up front rather than only on switching to it:
+    // the view is restored from the last session, so starting on Journal would
+    // otherwise show an empty history until something else refreshed it.
+    refreshJournal();
 
     Promise.all([api.listPresets(), api.listDevices().catch(() => []), api.health(), api.editing()])
       .then(([p, d, h, e]) => {
@@ -79,6 +93,9 @@
         meters = f.meters;
         wave = f.wave;
         env = f.env;
+        recording = f.recording;
+        // A session that ran to its own end still deserves the question.
+        if (f.finishedSession !== null) askForRating(f.finishedSession);
       } catch {
         /* the host is down; `health` below reports why */
       }
@@ -318,6 +335,66 @@
   function setView(v: View) {
     view = v;
     localStorage.setItem(VIEW_KEY, v);
+    if (v === "journal") refreshJournal();
+  }
+
+  async function refreshJournal() {
+    try {
+      [sessions, stats] = await Promise.all([api.journalRecent(60), api.journalStats()]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  function askForRating(id: number) {
+    toRate = { id, name: preset?.name ?? "that session" };
+  }
+
+  async function rate(rating: number, note: string | null) {
+    const entry = toRate;
+    toRate = null;
+    if (!entry) return;
+    try {
+      await api.journalRate(entry.id, rating, note);
+      await refreshJournal();
+      announce("Saved to your journal.");
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function stopSession() {
+    try {
+      // Long enough to be worth remembering? The backend decides and hands
+      // back an id if so.
+      const finished = await api.stop();
+      if (finished !== null) askForRating(finished);
+      await refreshJournal();
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function replaySession(id: number) {
+    try {
+      preset = await api.journalReplay(id);
+      masterGain = preset.master_gain;
+      dirty = true;
+      source = null;
+      setView("lab");
+      announce(`Loaded “${preset.name}” as it was for that session.`);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function discardSession(id: number) {
+    try {
+      await api.journalDiscard(id);
+      await refreshJournal();
+    } catch (e) {
+      fail(e);
+    }
   }
 
   function onTimeline(t: Timeline) {
@@ -365,9 +442,14 @@
     <nav class="views">
       <button class:on={view === "play"} onclick={() => setView("play")}>Play</button>
       <button class:on={view === "lab"} onclick={() => setView("lab")}>Lab</button>
+      <button class:on={view === "journal"} onclick={() => setView("journal")}>Journal</button>
     </nav>
 
     <div class="spacer"></div>
+
+    {#if recording}
+      <span class="rec" title="This session is being recorded in your journal">recording</span>
+    {/if}
 
     {#if devices.length > 1}
       <select
@@ -420,10 +502,24 @@
     </div>
   {/if}
 
+  {#if toRate}
+    <div class="ratebar">
+      <RatePrompt
+        presetName={toRate.name}
+        onrate={rate}
+        ondismiss={() => (toRate = null)}
+      />
+    </div>
+  {/if}
+
   <main>
     <PresetBrowser {presets} selected={preset?.id ?? null} onselect={choose} />
 
-    {#if !preset}
+    {#if view === "journal"}
+      <section class="stage">
+        <JournalView {sessions} {stats} onreplay={replaySession} ondiscard={discardSession} />
+      </section>
+    {:else if !preset}
       <!-- The empty state belongs to neither view: with nothing loaded there is
            no session to sit with and nothing to edit. -->
       <section class="stage">
@@ -446,7 +542,7 @@
           {meters}
           {masterGain}
           onplay={() => (playing ? api.pause() : api.play()).catch(fail)}
-          onstop={() => api.stop().catch(fail)}
+          onstop={stopSession}
           ongain={setGain}
           onseek={(s) => api.seek(s).catch(fail)}
         />
@@ -458,7 +554,7 @@
             disabled={!preset}>
             {playing ? "Pause" : "Play"}
           </button>
-          <button onclick={() => api.stop().catch(fail)} disabled={!preset}>Stop</button>
+          <button onclick={stopSession} disabled={!preset}>Stop</button>
 
           <div class="progress">
             <input
@@ -619,6 +715,18 @@
   .views button.on {
     background: var(--panel);
     color: var(--fg);
+  }
+  .rec {
+    font-size: 9px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    border-radius: 999px;
+    padding: 2px 8px;
+  }
+  .ratebar {
+    padding: 0 16px;
   }
   .devices {
     background: var(--sunken);

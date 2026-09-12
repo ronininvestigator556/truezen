@@ -108,6 +108,32 @@ export interface Frame {
   meters: Meters;
   wave: number[];
   env: number[];
+  /** Set for one poll when a session just ran to its end. */
+  finishedSession: number | null;
+  recording: boolean;
+  stayAwake: boolean;
+}
+
+export interface SessionRow {
+  id: number;
+  presetId: string;
+  presetName: string;
+  /** Unix seconds. */
+  startedAt: number;
+  listenedS: number;
+  completed: boolean;
+  rating: number | null;
+  note: string | null;
+}
+
+export interface PresetStat {
+  presetId: string;
+  presetName: string;
+  sessions: number;
+  totalS: number;
+  completed: number;
+  avgRating: number | null;
+  rated: number;
 }
 
 export interface HostStatus {
