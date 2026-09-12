@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use truezen_engine::factory;
 use truezen_engine::preset::{Goal, Preset};
-use truezen_engine::timeline::LayerParam;
+use truezen_engine::timeline::{LayerParam, Timeline};
 use truezen_engine::Meters;
 use truezen_host::{AudioHost, DeviceInfo, HostStatus, Stats};
 
@@ -210,6 +210,29 @@ fn set_layer_enabled(index: usize, on: bool, state: State) -> Cmd<()> {
     })
 }
 
+// --- timeline ------------------------------------------------------------
+
+/// Replace the session's automation.
+///
+/// The frontend owns the curve while editing and sends the whole timeline,
+/// rather than a per-breakpoint command surface: an edit is a single atomic
+/// swap that way, and there is no partial state to get wrong.
+#[tauri::command]
+fn update_timeline(timeline: Option<Timeline>, state: State) -> Cmd<()> {
+    with(&state, |a| {
+        let layers = a.current.as_ref().map_or(0, |p| p.layers.len());
+        if let Some(tl) = timeline.as_ref() {
+            tl.validate(layers)?;
+        }
+        if let Some(p) = a.current.as_mut() {
+            p.timeline = timeline.clone();
+        }
+        a.host()?
+            .update_timeline(timeline)
+            .map_err(|e| e.to_string())
+    })
+}
+
 // --- automation latching -------------------------------------------------
 
 #[tauri::command]
@@ -320,6 +343,7 @@ pub fn run() {
             set_layer_param,
             set_layer_enabled,
             set_track_latched,
+            update_timeline,
             unlatch_all,
             poll,
             health,

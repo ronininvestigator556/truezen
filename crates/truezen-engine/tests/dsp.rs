@@ -616,3 +616,141 @@ fn changing_depth_live_does_not_click() {
     }
     assert!(max_delta < 0.05, "depth change clicked: step of {max_delta}");
 }
+
+// ---------------------------------------------------------------------------
+// Live timeline editing
+// ---------------------------------------------------------------------------
+
+use truezen_engine::timeline::{Breakpoint, Curve, ParamTarget, Timeline, Track};
+
+fn beat_track(points: Vec<Breakpoint>) -> Timeline {
+    Timeline {
+        tracks: vec![Track::new(
+            ParamTarget::Layer {
+                index: 0,
+                param: LayerParam::Beat,
+            },
+            points,
+        )],
+        duration_s: Some(3600.0),
+        fade_out_s: 0.0,
+    }
+}
+
+/// Editing a curve must not restart the session. Losing your place forty
+/// minutes into a meditation because you nudged a breakpoint would be worse
+/// than not being able to edit at all.
+#[test]
+fn swapping_the_timeline_preserves_the_session_clock() {
+    let mut e = engine_for(&factory::by_id("deep-theta").unwrap());
+    beat_after(&mut e, 3.0);
+    let before = e.meters().position_s;
+    assert!(before > 2.5);
+
+    e.set_timeline(Some(beat_track(vec![
+        Breakpoint::new(0.0, 5.0, Curve::Linear),
+        Breakpoint::new(3600.0, 5.0, Curve::Hold),
+    ])));
+
+    let after = e.meters().position_s;
+    assert!(
+        (after - before).abs() < 0.01,
+        "clock jumped from {before} to {after}"
+    );
+}
+
+/// The edited curve should be audible immediately, not at the end of the
+/// current automation block or the next seek.
+#[test]
+fn an_edited_curve_takes_effect_at_once() {
+    let mut e = engine_for(&factory::by_id("deep-theta").unwrap());
+    beat_after(&mut e, 2.0);
+    assert!(e.meters().beat_hz > 9.0, "expected to start near 10 Hz");
+
+    e.set_timeline(Some(beat_track(vec![
+        Breakpoint::new(0.0, 3.0, Curve::Hold),
+        Breakpoint::new(3600.0, 3.0, Curve::Hold),
+    ])));
+
+    let beat = beat_after(&mut e, 1.0);
+    assert!((beat - 3.0).abs() < 0.05, "curve did not take effect: {beat}");
+}
+
+/// Swapping the timeline must not silently keep a latch pointing at a track
+/// index that now means something else.
+#[test]
+fn swapping_the_timeline_clears_latches() {
+    let mut e = engine_for(&factory::by_id("deep-theta").unwrap());
+    beat_after(&mut e, 1.0);
+    e.apply(Command::SetLayerParam {
+        index: 0,
+        param: LayerParam::Beat,
+        value: 6.0,
+    });
+    beat_after(&mut e, 1.0);
+    assert_ne!(e.meters().latched_tracks, 0);
+
+    e.set_timeline(Some(beat_track(vec![
+        Breakpoint::new(0.0, 9.0, Curve::Hold),
+        Breakpoint::new(3600.0, 9.0, Curve::Hold),
+    ])));
+
+    let beat = beat_after(&mut e, 1.0);
+    assert_eq!(e.meters().latched_tracks, 0, "a latch survived the swap");
+    assert!((beat - 9.0).abs() < 0.05, "new curve is not driving: {beat}");
+}
+
+/// Removing the timeline entirely leaves a preset that simply holds.
+#[test]
+fn clearing_the_timeline_freezes_the_current_values() {
+    let mut e = engine_for(&factory::by_id("deep-theta").unwrap());
+    beat_after(&mut e, 2.0);
+    let held = e.meters().beat_hz as f64;
+
+    e.set_timeline(None);
+    let after = beat_after(&mut e, 4.0);
+    assert!(
+        (after - held).abs() < 0.05,
+        "beat drifted from {held} to {after} with no timeline"
+    );
+    assert_eq!(e.meters().duration_s, 0.0, "cleared timeline still reports a length");
+}
+
+/// Editing while playing must not glitch the output.
+#[test]
+fn swapping_the_timeline_mid_playback_does_not_click() {
+    let mut e = engine_for(&factory::by_id("deep-theta").unwrap());
+    let mut out = vec![0.0f32; BLOCK * 2];
+    for _ in 0..60 {
+        e.process(&mut out);
+    }
+
+    let mut prev = out[out.len() - 2];
+    let mut max_delta = 0.0f64;
+    for i in 0..40 {
+        e.set_timeline(Some(beat_track(vec![
+            Breakpoint::new(0.0, 4.0 + (i % 7) as f64, Curve::Linear),
+            Breakpoint::new(3600.0, 4.0 + (i % 5) as f64, Curve::Linear),
+        ])));
+        e.process(&mut out);
+        for &s in out.iter().step_by(2) {
+            max_delta = max_delta.max((s - prev).abs() as f64);
+            prev = s;
+        }
+    }
+    assert!(max_delta < 0.05, "timeline swap clicked: step of {max_delta}");
+}
+
+#[test]
+fn validate_rejects_a_track_targeting_a_missing_layer() {
+    let tl = beat_track(vec![Breakpoint::new(0.0, 5.0, Curve::Linear)]);
+    assert!(tl.validate(1).is_ok());
+    assert!(tl.validate(0).is_err(), "accepted a track with no layer behind it");
+
+    let empty = Timeline {
+        tracks: vec![Track::new(ParamTarget::MasterGain, vec![])],
+        duration_s: Some(60.0),
+        fade_out_s: 0.0,
+    };
+    assert!(empty.validate(1).is_err(), "accepted a track with no breakpoints");
+}

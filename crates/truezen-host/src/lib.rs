@@ -26,8 +26,9 @@ use std::time::{Duration, Instant};
 use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{Device, SampleFormat, StreamConfig};
 
-use truezen_engine::engine::{Command, Engine, Meters, SessionState};
+use truezen_engine::engine::{Command, Engine, Meters, Recycled, SessionState, TimelineSwap};
 use truezen_engine::preset::Preset;
+use truezen_engine::timeline::Timeline;
 use truezen_engine::timeline::LayerParam;
 use truezen_engine::Transport;
 
@@ -42,7 +43,7 @@ use telemetry::{ScopeWriter, Telemetry};
 /// Commands buffered between the UI and the audio callback. Generous, because
 /// a fast knob drag can produce a burst and dropping those would be visible.
 const COMMAND_CAPACITY: usize = 1024;
-/// Displaced layer stacks awaiting disposal off-thread.
+/// Displaced layer stacks and timelines awaiting disposal off-thread.
 const RECYCLE_CAPACITY: usize = 64;
 /// Largest block the callback will render in one go. Preallocated, so a
 /// backend that hands us an unexpectedly large buffer is chunked rather than
@@ -96,6 +97,7 @@ pub struct HostStatus {
 enum Request {
     Engine(Command),
     LoadPreset(Box<Preset>),
+    UpdateTimeline(Box<Option<Timeline>>),
     SelectDevice(Option<String>),
     /// Raised by the stream error callback.
     DeviceLost(String),
@@ -220,6 +222,12 @@ impl AudioHost {
         self.command(Command::SetLayerEnabled { index, on })
     }
 
+    /// Replace the session's automation, leaving the layers and the clock
+    /// alone. Pass `None` to remove automation entirely.
+    pub fn update_timeline(&self, timeline: Option<Timeline>) -> Result<(), HostError> {
+        self.send(Request::UpdateTimeline(Box::new(timeline)))
+    }
+
     /// Hand an automated parameter back to its timeline track.
     ///
     /// Dialing a parameter latches it automatically; this is the way back.
@@ -276,7 +284,7 @@ struct Active {
     /// Dropping this stops the stream; it must outlive the channels below.
     stream: cpal::Stream,
     cmd_tx: rtrb::Producer<Command>,
-    recycle_rx: rtrb::Consumer<Box<SessionState>>,
+    recycle_rx: rtrb::Consumer<Recycled>,
     sample_rate: f64,
 }
 
@@ -366,6 +374,19 @@ fn run(
                     push_command(a, &shared, Command::Replace(state));
                 }
                 desired.preset = Some(*preset);
+            }
+
+            Request::UpdateTimeline(timeline) => {
+                // Build the swap here, off the audio thread, and remember it so
+                // a later device rebuild reconstructs the edited session rather
+                // than the preset as it was shipped.
+                if let Some(p) = desired.preset.as_mut() {
+                    p.timeline = (*timeline).clone();
+                }
+                if let Some(a) = active.as_mut() {
+                    let swap = Box::new(TimelineSwap::new(*timeline));
+                    push_command(a, &shared, Command::ReplaceTimeline(swap));
+                }
             }
 
             Request::SelectDevice(name) => {
@@ -524,9 +545,9 @@ fn push_command(active: &mut Active, shared: &Shared, cmd: Command) {
     shared.telemetry.note_dropped_command();
 }
 
-/// Drop layer stacks displaced by a preset change. Doing this here rather than
-/// in the callback is the whole point of the recycle queue: deallocation can
-/// block, and blocking in the callback is a dropout.
+/// Drop layer stacks and timelines displaced by an edit. Doing this here
+/// rather than in the callback is the whole point of the recycle queue:
+/// deallocation can block, and blocking in the callback is a dropout.
 fn drain_recycle(active: &mut Active) {
     while let Ok(old) = active.recycle_rx.pop() {
         drop(old);
@@ -559,7 +580,7 @@ fn build(
     let sample_rate = chosen.config.sample_rate as f64;
 
     let (cmd_tx, cmd_rx) = rtrb::RingBuffer::<Command>::new(COMMAND_CAPACITY);
-    let (recycle_tx, recycle_rx) = rtrb::RingBuffer::<Box<SessionState>>::new(RECYCLE_CAPACITY);
+    let (recycle_tx, recycle_rx) = rtrb::RingBuffer::<Recycled>::new(RECYCLE_CAPACITY);
     let (meters_in, meters_out) = triple_buffer::triple_buffer(&Meters::default());
     let (scope_in, scope_out) = triple_buffer::triple_buffer(&Scope::default());
 
@@ -609,7 +630,7 @@ fn build_stream(
     format: SampleFormat,
     engine: Engine,
     cmd_rx: rtrb::Consumer<Command>,
-    recycle_tx: rtrb::Producer<Box<SessionState>>,
+    recycle_tx: rtrb::Producer<Recycled>,
     meters: triple_buffer::Input<Meters>,
     scope: triple_buffer::Input<Scope>,
     shared: Arc<Shared>,
@@ -638,7 +659,7 @@ fn make<T>(
     config: &StreamConfig,
     mut engine: Engine,
     mut cmd_rx: rtrb::Consumer<Command>,
-    mut recycle_tx: rtrb::Producer<Box<SessionState>>,
+    mut recycle_tx: rtrb::Producer<Recycled>,
     mut meters: triple_buffer::Input<Meters>,
     mut scope_out: triple_buffer::Input<Scope>,
     shared: Arc<Shared>,
@@ -739,6 +760,7 @@ mod tests {
                 Request::Engine(Command::Seek { seconds }) => format!("seek={seconds}"),
                 Request::Engine(_) => "cmd".into(),
                 Request::LoadPreset(_) => "load".into(),
+            Request::UpdateTimeline(_) => "timeline".into(),
                 Request::SelectDevice(_) => "device".into(),
                 Request::DeviceLost(_) => "lost".into(),
                 Request::Shutdown => "shutdown".into(),

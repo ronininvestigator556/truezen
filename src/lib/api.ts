@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DeviceInfo, Frame, Health, Preset, PresetSummary } from "./types";
+import type { DeviceInfo, Frame, Health, Preset, PresetSummary, Timeline } from "./types";
 
 export const api = {
   listPresets: () => invoke<PresetSummary[]>("list_presets"),
@@ -17,6 +17,9 @@ export const api = {
     invoke<void>("set_layer_param", { index, param, value }),
   setLayerEnabled: (index: number, on: boolean) =>
     invoke<void>("set_layer_enabled", { index, on }),
+
+  updateTimeline: (timeline: Timeline | null) =>
+    invoke<void>("update_timeline", { timeline }),
 
   setTrackLatched: (track: number, latched: boolean) =>
     invoke<void>("set_track_latched", { track, latched }),

@@ -1,8 +1,11 @@
 <script lang="ts">
   import { api } from "./lib/api";
+  import { clock } from "./lib/curve";
   import LayerCard from "./lib/components/LayerCard.svelte";
   import NumberField from "./lib/components/NumberField.svelte";
+  import PlayView from "./lib/components/PlayView.svelte";
   import PresetBrowser from "./lib/components/PresetBrowser.svelte";
+  import TimelineEditor from "./lib/components/TimelineEditor.svelte";
   import Visualizer from "./lib/components/Visualizer.svelte";
   import {
     bandFor,
@@ -12,9 +15,13 @@
     type Meters,
     type Preset,
     type PresetSummary,
+    type Timeline,
   } from "./lib/types";
 
   const SAFETY_KEY = "truezen.safety.ack.v1";
+  const VIEW_KEY = "truezen.view";
+
+  type View = "play" | "lab";
 
   let presets = $state<PresetSummary[]>([]);
   let preset = $state<Preset | null>(null);
@@ -26,6 +33,7 @@
   let error = $state<string | null>(null);
   let acknowledged = $state(false);
   let masterGain = $state(0.7);
+  let view = $state<View>("play");
 
   let playing = $derived(meters?.playing ?? false);
   let sampleRate = $derived(health?.status.sampleRate || 48000);
@@ -41,6 +49,8 @@
 
   $effect(() => {
     acknowledged = localStorage.getItem(SAFETY_KEY) === "1";
+    const saved = localStorage.getItem(VIEW_KEY);
+    if (saved === "play" || saved === "lab") view = saved;
 
     Promise.all([api.listPresets(), api.listDevices().catch(() => []), api.health()])
       .then(([p, d, h]) => {
@@ -127,17 +137,24 @@
     api.setMasterGain(v).catch(fail);
   }
 
+  function setView(v: View) {
+    view = v;
+    localStorage.setItem(VIEW_KEY, v);
+  }
+
+  function onTimeline(t: Timeline) {
+    if (!preset) return;
+    // Keep the local copy in step so the editor redraws from the same shape the
+    // engine just received.
+    preset.timeline = t;
+    api.updateTimeline(t).catch(fail);
+  }
+
   function acknowledge() {
     localStorage.setItem(SAFETY_KEY, "1");
     acknowledged = true;
   }
 
-  function clock(s: number) {
-    if (!Number.isFinite(s) || s < 0) s = 0;
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  }
 </script>
 
 {#if !acknowledged}
@@ -165,6 +182,11 @@
       <span class="mark"></span>
       TrueZen
     </div>
+
+    <nav class="views">
+      <button class:on={view === "play"} onclick={() => setView("play")}>Play</button>
+      <button class:on={view === "lab"} onclick={() => setView("lab")}>Lab</button>
+    </nav>
 
     <div class="spacer"></div>
 
@@ -218,87 +240,125 @@
   <main>
     <PresetBrowser {presets} selected={preset?.id ?? null} onselect={choose} />
 
-    <section class="stage">
-      <div class="transport">
-        <button class="play" onclick={() => (playing ? api.pause() : api.play()).catch(fail)}
-          disabled={!preset}>
-          {playing ? "Pause" : "Play"}
-        </button>
-        <button onclick={() => api.stop().catch(fail)} disabled={!preset}>Stop</button>
-
-        <div class="progress">
-          <input
-            type="range"
-            min="0"
-            max={Math.max(duration, 1)}
-            step="1"
-            value={position}
-            disabled={!preset || duration <= 0}
-            oninput={(e) => api.seek(Number(e.currentTarget.value)).catch(fail)}
-          />
-          <div class="times">
-            <span class="mono">{clock(position)}</span>
-            <span class="mono">{duration > 0 ? clock(duration) : "open-ended"}</span>
-          </div>
+    {#if !preset}
+      <!-- The empty state belongs to neither view: with nothing loaded there is
+           no session to sit with and nothing to edit. -->
+      <section class="stage">
+        <div class="placeholder">
+          <p>Choose a preset to begin.</p>
+          <p class="fine">
+            <strong>Play</strong> is the session itself &mdash; a progress ring, the live beat rate,
+            and little else. <strong>Lab</strong> opens the layer rack and the timeline editor.
+          </p>
+          <p class="fine">
+            Every control is drag-to-scrub and click-to-type. Shift for fine steps, Alt for coarse.
+            Frequency fields also accept names &mdash; try typing <code>schumann</code>.
+          </p>
         </div>
-
-        {#if meters}
-          <div class="live">
-            <div class="big mono">{meters.beatHz.toFixed(2)}<small>Hz</small></div>
-            <div class="band">{bandFor(meters.beatHz).name}</div>
-          </div>
-        {/if}
-
-        <div class="master">
-          <NumberField
-            label="Master"
-            value={masterGain}
-            min={0}
-            max={1}
-            step={0.005}
-            decimals={3}
-            onchange={setGain}
-          />
-        </div>
-
-        {#if latchedAny}
-          <button class="restore" onclick={() => api.unlatchAll().catch(fail)}>
-            Restore automation
+      </section>
+    {:else if view === "play"}
+      <section class="stage">
+        <PlayView
+          {preset}
+          {meters}
+          {masterGain}
+          onplay={() => (playing ? api.pause() : api.play()).catch(fail)}
+          onstop={() => api.stop().catch(fail)}
+          ongain={setGain}
+          onseek={(s) => api.seek(s).catch(fail)}
+        />
+      </section>
+    {:else}
+      <section class="stage">
+        <div class="transport">
+          <button class="play" onclick={() => (playing ? api.pause() : api.play()).catch(fail)}
+            disabled={!preset}>
+            {playing ? "Pause" : "Play"}
           </button>
-        {/if}
-      </div>
+          <button onclick={() => api.stop().catch(fail)} disabled={!preset}>Stop</button>
 
-      <div class="viz">
-        <Visualizer {wave} {env} {sampleRate} {playing} />
-      </div>
-
-      <div class="rack">
-        {#if preset}
-          <div class="rackhead">
-            <h2>{preset.name}</h2>
-            <p>{preset.description}</p>
-          </div>
-          {#each preset.layers as layer, i (i)}
-            <LayerCard
-              {layer}
-              index={i}
-              {trackFor}
-              onparam={onParam}
-              onenabled={onEnabled}
-              onrelease={(track) => api.setTrackLatched(track, false).catch(fail)}
+          <div class="progress">
+            <input
+              type="range"
+              min="0"
+              max={Math.max(duration, 1)}
+              step="1"
+              value={position}
+              disabled={!preset || duration <= 0}
+              oninput={(e) => api.seek(Number(e.currentTarget.value)).catch(fail)}
             />
-          {/each}
-        {:else}
-          <div class="placeholder">
-            <p>Choose a preset to begin.</p>
-            <p class="fine">
-              Every control is drag-to-scrub and click-to-type. Shift for fine steps, Alt for
-              coarse. Frequency fields also accept names &mdash; try typing <code>schumann</code>.
-            </p>
+            <div class="times">
+              <span class="mono">{clock(position)}</span>
+              <span class="mono">{duration > 0 ? clock(duration) : "open-ended"}</span>
+            </div>
           </div>
-        {/if}
-      </div>
-    </section>
+
+          {#if meters}
+            <div class="live">
+              <div class="big mono">{meters.beatHz.toFixed(2)}<small>Hz</small></div>
+              <div class="band">{bandFor(meters.beatHz).name}</div>
+            </div>
+          {/if}
+
+          <div class="master">
+            <NumberField
+              label="Master"
+              value={masterGain}
+              min={0}
+              max={1}
+              step={0.005}
+              decimals={3}
+              onchange={setGain}
+            />
+          </div>
+
+          {#if latchedAny}
+            <button class="restore" onclick={() => api.unlatchAll().catch(fail)}>
+              Restore automation
+            </button>
+          {/if}
+        </div>
+
+        <div class="viz">
+          <Visualizer {wave} {env} {sampleRate} {playing} />
+        </div>
+
+        <div class="rack">
+            <div class="rackhead">
+              <h2>{preset.name}</h2>
+              <p>{preset.description}</p>
+            </div>
+            {#each preset.layers as layer, i (i)}
+              <LayerCard
+                {layer}
+                index={i}
+                {trackFor}
+                onparam={onParam}
+                onenabled={onEnabled}
+                onrelease={(track) => api.setTrackLatched(track, false).catch(fail)}
+              />
+            {/each}
+
+            {#if preset.timeline && preset.timeline.tracks.length > 0}
+              <TimelineEditor
+                timeline={preset.timeline}
+                layers={preset.layers}
+                positionS={position}
+                latchedTracks={meters?.latchedTracks ?? 0}
+                onchange={onTimeline}
+                onseek={(s) => api.seek(s).catch(fail)}
+                onrelease={(track) => api.setTrackLatched(track, false).catch(fail)}
+              />
+            {:else}
+              <p class="noauto">
+                This preset holds its settings for as long as it runs &mdash; there is no timeline
+                to edit.
+              </p>
+            {/if}
+        </div>
+      </section>
+    {/if}
+
   </main>
 </div>
 
@@ -334,6 +394,28 @@
   }
   .spacer {
     flex: 1;
+  }
+  .views {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    margin-left: 8px;
+  }
+  .views button {
+    padding: 4px 14px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .views button.on {
+    background: var(--panel);
+    color: var(--fg);
   }
   .devices {
     background: var(--sunken);
@@ -521,6 +603,11 @@
     line-height: 1.5;
     max-width: 68ch;
   }
+  .noauto {
+    font-size: 11.5px;
+    color: var(--muted);
+    padding: 10px 2px;
+  }
   .placeholder {
     padding: 36px 8px;
     color: var(--muted);
@@ -529,8 +616,12 @@
   .placeholder .fine {
     font-size: 11.5px;
     margin-top: 10px;
-    max-width: 56ch;
+    max-width: 58ch;
     line-height: 1.6;
+  }
+  .placeholder strong {
+    color: var(--fg-dim);
+    font-weight: 600;
   }
   code {
     font-family: var(--mono);

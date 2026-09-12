@@ -55,7 +55,19 @@
   let dragging = $state(false);
   let input: HTMLInputElement | null = $state(null);
 
-  let display = $derived(value.toFixed(decimals).replace(/\.?0+$/, "") || "0");
+  let display = $derived(format(value, decimals));
+
+  /**
+   * Trim trailing zeros, but only past a decimal point.
+   *
+   * Trimming unconditionally eats zeros off whole numbers -- 1200 renders as
+   * "12" and a 2000 Hz cutoff as "2" -- which silently misreports the value.
+   */
+  function format(v: number, dp: number): string {
+    const fixed = v.toFixed(dp);
+    if (!fixed.includes(".")) return fixed;
+    return fixed.replace(/\.?0+$/, "") || "0";
+  }
 
   function clamp(v: number) {
     return Math.min(max, Math.max(min, v));

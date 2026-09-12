@@ -176,6 +176,36 @@ impl Timeline {
         }
     }
 
+    /// Reject a timeline that would misbehave once installed. Curves arrive
+    /// from the UI and from hand-edited preset files, so this runs on every
+    /// swap rather than trusting the caller.
+    pub fn validate(&self, layer_count: usize) -> Result<(), String> {
+        if let Some(d) = self.duration_s {
+            if !d.is_finite() || d < 0.0 {
+                return Err(format!("duration {d} is not a valid length"));
+            }
+        }
+        if !self.fade_out_s.is_finite() || self.fade_out_s < 0.0 {
+            return Err(format!("fade-out {} is not a valid length", self.fade_out_s));
+        }
+        for (i, track) in self.tracks.iter().enumerate() {
+            if let ParamTarget::Layer { index, .. } = track.target {
+                if index >= layer_count {
+                    return Err(format!("track {i} targets layer {index}, which does not exist"));
+                }
+            }
+            if track.points.is_empty() {
+                return Err(format!("track {i} has no breakpoints"));
+            }
+            for p in &track.points {
+                if !p.at_s.is_finite() || p.at_s < 0.0 || !p.value.is_finite() {
+                    return Err(format!("track {i} has an invalid breakpoint"));
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn is_finished(&self, t: f64) -> bool {
         let dur = self.duration();
         dur > 0.0 && t >= dur

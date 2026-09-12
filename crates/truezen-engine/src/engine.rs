@@ -75,6 +75,31 @@ impl SessionState {
     }
 }
 
+/// A timeline swapped in on its own, leaving the layer stack and the session
+/// clock untouched.
+pub struct TimelineSwap {
+    pub timeline: Option<Timeline>,
+    pub track_latched: Vec<bool>,
+}
+
+impl TimelineSwap {
+    pub fn new(timeline: Option<Timeline>) -> Self {
+        let n = timeline.as_ref().map_or(0, |t| t.tracks.len());
+        Self {
+            timeline,
+            track_latched: vec![false; n],
+        }
+    }
+}
+
+/// Heap data displaced from the engine, handed back for the caller to drop on
+/// its own thread. Deallocation can block, and blocking in the audio callback
+/// is a dropout.
+pub enum Recycled {
+    Session(Box<SessionState>),
+    Timeline(Box<TimelineSwap>),
+}
+
 /// A snapshot for the UI. `Copy` and scalar-only, so it can go through a
 /// triple buffer without allocation.
 #[derive(Copy, Clone, Debug, Default, serde::Serialize)]
@@ -107,6 +132,9 @@ pub enum Command {
     SetMasterGain(f64),
     SetLayerEnabled { index: usize, on: bool },
     SetLayerParam { index: usize, param: LayerParam, value: f64 },
+    /// Swap the automation without disturbing the layers or the clock. Editing
+    /// a curve mid-session must not restart the session.
+    ReplaceTimeline(Box<TimelineSwap>),
     /// Hand a parameter back to its automation track.
     SetTrackLatched { track: usize, latched: bool },
     /// Restore every automated parameter to timeline control.
@@ -181,8 +209,13 @@ impl Engine {
         self.apply(Command::Replace(state));
     }
 
+    /// Convenience for tests; the host builds the swap off-thread.
+    pub fn set_timeline(&mut self, timeline: Option<Timeline>) {
+        self.apply(Command::ReplaceTimeline(Box::new(TimelineSwap::new(timeline))));
+    }
+
     /// Returns any displaced heap data for the caller to drop off-thread.
-    pub fn apply(&mut self, cmd: Command) -> Option<Box<SessionState>> {
+    pub fn apply(&mut self, cmd: Command) -> Option<Recycled> {
         match cmd {
             Command::Play => {
                 self.finished = false;
@@ -248,7 +281,19 @@ impl Engine {
                 self.finished = false;
                 self.fade = 1.0;
                 self.snap_automation();
-                return Some(old);
+                return Some(Recycled::Session(old));
+            }
+            Command::ReplaceTimeline(swap) => {
+                let mut swap = swap;
+                std::mem::swap(&mut self.state.timeline, &mut swap.timeline);
+                std::mem::swap(&mut self.state.track_latched, &mut swap.track_latched);
+                // A session that had already run past its old end should be
+                // able to keep going under a longer new timeline.
+                self.finished = false;
+                // Apply the edited curve at once rather than at the end of the
+                // current automation block.
+                self.tick_automation();
+                return Some(Recycled::Timeline(swap));
             }
         }
         None
