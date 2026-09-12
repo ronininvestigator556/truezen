@@ -17,7 +17,7 @@ most sessions from one click on a preset.
 | 3 | Tauri bridge + Lab view | done |
 | 4 | Timeline editor + Play view | done |
 | 5 | Preset library, import/export | done |
-| 6 | File layers + WAV export | |
+| 6 | File layers + WAV export | done |
 | 7 | Journal, tray, hotkeys | |
 | 8 | Packaging + CI | |
 
@@ -25,7 +25,7 @@ most sessions from one click on a preset.
 
 ```
 crates/truezen-engine   pure DSP — no audio device, no UI, no filesystem
-crates/truezen-host     cpal stream, lock-free control, telemetry
+crates/truezen-host     cpal stream, lock-free control, file decoding, export
 crates/truezen-render   offline renderer and spectral analyser
 src-tauri               Tauri bridge — owns the host, forwards commands
 src                     Svelte 5 frontend: preset browser, Lab view, visualiser
@@ -79,6 +79,34 @@ its own data rather than the parameter's full range, so a beat track moving
 between 8 and 10 Hz reads as a shape instead of a flat line at the bottom of a
 0-60 Hz axis. Edits swap the automation without restarting the session.
 
+## Your own audio
+
+**Add an audio file layer** in the Lab mixes your own recording in — music, a
+rain bed, a spoken guidance track. Anything symphonia decodes works (wav, mp3,
+flac, m4a, ogg, opus), at any sample rate; it is resampled to the engine rate
+on the way in. Mono is centred, surround is folded to its front pair.
+
+A looping bed is crossfaded at the seam, so a short file plays continuously
+without a click. The fade is equal-power, which is right for the decorrelated
+material a bed usually is; a sustained pure tone can dip slightly across the
+seam instead.
+
+**Duck others** marks a layer as a voice track: everything else drops
+underneath it while it speaks and comes back gently afterwards.
+
+## Rendering to a file
+
+**Render audio…** writes the session to a 24-bit WAV, roughly 500x faster than
+real time, so you can put it on a phone. It drives the same
+`Engine::process` as live playback and decodes file layers directly, so the
+render *is* the session rather than an approximation of it.
+
+The same renderer backs the CLI:
+
+```sh
+cargo run --release -p truezen-render -- render deep-theta -o session.wav
+```
+
 ## Your own presets
 
 Every edit in the Lab marks the session unsaved. **Save** writes it to your
@@ -96,7 +124,7 @@ silently replacing what you already had.
 ## Tests
 
 ```sh
-cargo test --release                          # 74 tests, no hardware needed
+cargo test --release                          # 96 tests, no hardware needed
 cargo test --release -p truezen-host -- --ignored   # 8 tests, needs an audio device
 ```
 

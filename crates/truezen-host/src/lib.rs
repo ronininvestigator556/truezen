@@ -28,16 +28,22 @@ use cpal::{Device, SampleFormat, StreamConfig};
 
 use truezen_engine::engine::{Command, Engine, Meters, Recycled, SessionState, TimelineSwap};
 use truezen_engine::preset::Preset;
+use truezen_engine::layer::LayerKind;
 use truezen_engine::timeline::Timeline;
 use truezen_engine::timeline::LayerParam;
 use truezen_engine::Transport;
 
+pub mod decoder;
 pub mod device;
+pub mod export;
+pub mod filesource;
+pub mod resample;
 pub mod telemetry;
 
 pub use device::{DeviceInfo, PREFERRED_FRAMES};
 pub use telemetry::{Scope, Stats, ENV_POINTS, WAVE_POINTS};
 
+use crate::filesource::StreamedSource;
 use telemetry::{ScopeWriter, Telemetry};
 
 /// Commands buffered between the UI and the audio callback. Generous, because
@@ -98,6 +104,8 @@ enum Request {
     Engine(Command),
     LoadPreset(Box<Preset>),
     UpdateTimeline(Box<Option<Timeline>>),
+    AttachFile { index: usize, path: String, looping: bool },
+    DetachFile { index: usize },
     SelectDevice(Option<String>),
     /// Raised by the stream error callback.
     DeviceLost(String),
@@ -226,6 +234,21 @@ impl AudioHost {
     /// alone. Pass `None` to remove automation entirely.
     pub fn update_timeline(&self, timeline: Option<Timeline>) -> Result<(), HostError> {
         self.send(Request::UpdateTimeline(Box::new(timeline)))
+    }
+
+    /// Give a layer audio from a file. Opening happens on the audio thread,
+    /// not in the callback, and the result is reported through
+    /// [`AudioHost::status`] if it fails.
+    pub fn attach_file(&self, index: usize, path: String, looping: bool) -> Result<(), HostError> {
+        self.send(Request::AttachFile { index, path, looping })
+    }
+
+    pub fn detach_file(&self, index: usize) -> Result<(), HostError> {
+        self.send(Request::DetachFile { index })
+    }
+
+    pub fn set_layer_duck(&self, index: usize, on: bool, depth: f64) -> Result<(), HostError> {
+        self.command(Command::SetLayerDuck { index, on, depth })
     }
 
     /// Hand an automated parameter back to its timeline track.
@@ -369,11 +392,15 @@ fn run(
             Request::LoadPreset(preset) => {
                 desired.position_s = 0.0;
                 desired.master_gain = None;
-                if let Some(a) = active.as_mut() {
-                    let state = Box::new(SessionState::from_preset(&preset, a.sample_rate));
-                    push_command(a, &shared, Command::Replace(state));
-                }
                 desired.preset = Some(*preset);
+                if let Some(a) = active.as_mut() {
+                    let p = desired.preset.as_ref().unwrap();
+                    let state = Box::new(SessionState::from_preset(p, a.sample_rate));
+                    push_command(a, &shared, Command::Replace(state));
+                    // A preset that references audio files must reopen them,
+                    // or its file layers load silent.
+                    attach_files(a, &desired, &shared);
+                }
             }
 
             Request::UpdateTimeline(timeline) => {
@@ -386,6 +413,37 @@ fn run(
                 if let Some(a) = active.as_mut() {
                     let swap = Box::new(TimelineSwap::new(*timeline));
                     push_command(a, &shared, Command::ReplaceTimeline(swap));
+                }
+            }
+
+            Request::AttachFile { index, path, looping } => {
+                // Remember it so a device rebuild reopens the same file.
+                if let Some(p) = desired.preset.as_mut() {
+                    if let Some(l) = p.layers.get_mut(index) {
+                        l.file_path = Some(path.clone());
+                        l.loop_file = looping;
+                    }
+                }
+                if let Some(a) = active.as_mut() {
+                    match StreamedSource::open(&path, a.sample_rate as u32, looping) {
+                        Ok(src) => push_command(
+                            a,
+                            &shared,
+                            Command::AttachSource { index, source: Box::new(src) },
+                        ),
+                        Err(e) => set_status(&shared, |s| s.last_error = Some(e)),
+                    }
+                }
+            }
+
+            Request::DetachFile { index } => {
+                if let Some(p) = desired.preset.as_mut() {
+                    if let Some(l) = p.layers.get_mut(index) {
+                        l.file_path = None;
+                    }
+                }
+                if let Some(a) = active.as_mut() {
+                    push_command(a, &shared, Command::DetachSource { index });
                 }
             }
 
@@ -457,6 +515,7 @@ fn rebuild(
                 let state = Box::new(SessionState::from_preset(preset, a.sample_rate));
                 push_command(&mut a, shared, Command::Replace(state));
             }
+            attach_files(&mut a, desired, shared);
             if let Some(g) = desired.master_gain {
                 push_command(&mut a, shared, Command::SetMasterGain(g));
             }
@@ -525,6 +584,29 @@ fn coalesce(batch: &mut Vec<Request>) {
         i += 1;
         k
     });
+}
+
+/// Reopen every file layer the current preset names.
+fn attach_files(active: &mut Active, desired: &Desired, shared: &Shared) {
+    let Some(preset) = desired.preset.as_ref() else { return };
+    for (index, cfg) in preset.layers.iter().enumerate() {
+        if cfg.kind != LayerKind::File {
+            continue;
+        }
+        let Some(path) = cfg.file_path.as_ref() else { continue };
+        match StreamedSource::open(path, active.sample_rate as u32, cfg.loop_file) {
+            Ok(src) => push_command(
+                active,
+                shared,
+                Command::AttachSource { index, source: Box::new(src) },
+            ),
+            // A moved or deleted file leaves the layer silent and says so,
+            // rather than failing the whole preset.
+            Err(e) => set_status(shared, |s| {
+                s.last_error = Some(format!("{}: {e}", cfg.name));
+            }),
+        }
+    }
 }
 
 fn push_command(active: &mut Active, shared: &Shared, cmd: Command) {
@@ -761,6 +843,8 @@ mod tests {
                 Request::Engine(_) => "cmd".into(),
                 Request::LoadPreset(_) => "load".into(),
             Request::UpdateTimeline(_) => "timeline".into(),
+            Request::AttachFile { .. } => "attach".into(),
+            Request::DetachFile { .. } => "detach".into(),
                 Request::SelectDevice(_) => "device".into(),
                 Request::DeviceLost(_) => "lost".into(),
                 Request::Shutdown => "shutdown".into(),

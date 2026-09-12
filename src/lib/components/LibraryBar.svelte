@@ -11,9 +11,23 @@
     ondelete: () => void;
     onexport: () => void;
     onimport: () => void;
+    onrender: () => void;
+    /** Render progress 0..1, or null when not rendering. */
+    rendering: number | null;
   }
-  let { name, source, dirty, libraryDir, onsave, onsaveas, ondelete, onexport, onimport }: Props =
-    $props();
+  let {
+    name,
+    source,
+    dirty,
+    libraryDir,
+    onsave,
+    onsaveas,
+    ondelete,
+    onexport,
+    onimport,
+    onrender,
+    rendering,
+  }: Props = $props();
 
   let naming = $state(false);
   let draft = $state("");
@@ -69,6 +83,9 @@
         : "Save changes"
     }>Save</button>
     <button onclick={beginSaveAs}>Save as…</button>
+    <button onclick={onrender} disabled={rendering !== null}>
+      {rendering === null ? "Render audio…" : `Rendering ${Math.round(rendering * 100)}%`}
+    </button>
     <button onclick={onexport}>Export…</button>
     <button onclick={onimport}>Import…</button>
     {#if source === "user" || source === "override"}

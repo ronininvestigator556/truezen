@@ -1,5 +1,5 @@
 /** Mirrors `truezen_engine::layer::LayerConfig`. */
-export type LayerKind = "binaural" | "monaural" | "isochronic" | "noise";
+export type LayerKind = "binaural" | "monaural" | "isochronic" | "noise" | "file";
 export type Waveform = "sine" | "triangle" | "square" | "saw";
 export type NoiseColor = "white" | "pink" | "brown";
 export type FilterMode = "low_pass" | "band_pass" | "high_pass";
@@ -24,6 +24,10 @@ export interface LayerConfig {
   filter_q: number;
   lfo_rate_hz: number;
   lfo_depth: number;
+  file_path: string | null;
+  loop_file: boolean;
+  ducks_others: boolean;
+  duck_depth: number;
 }
 
 export type Curve = "hold" | "linear" | "exponential" | "smoothstep";

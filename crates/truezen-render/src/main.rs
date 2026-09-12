@@ -4,13 +4,13 @@
 //! frequency or a clicking gate is near-impossible to diagnose through a GUI
 //! and trivial to catch with an FFT.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use realfft::RealFftPlanner;
 use truezen_engine::engine::{Command, Engine};
-use truezen_engine::mixer::Dither;
 use truezen_engine::preset::Preset;
 use truezen_engine::factory;
+use truezen_host::export::{render_to_wav, ExportOptions};
 
 /// Block size for offline rendering. Matches a typical device buffer so the
 /// offline path exercises the same automation cadence as live playback.
@@ -102,56 +102,28 @@ fn main() -> Result<()> {
 
         Cmd::Render { preset, out, seconds, sample_rate, bits } => {
             let preset = load(&preset)?;
-            let seconds = match seconds.or_else(|| {
-                let d = preset.duration_s();
-                (d > 0.0).then_some(d)
-            }) {
-                Some(s) => s,
-                None => bail!("'{}' runs indefinitely; pass --seconds", preset.id),
-            };
-
             let started = std::time::Instant::now();
-            let buf = render(&preset, seconds, sample_rate);
-            let elapsed = started.elapsed().as_secs_f64();
 
-            let spec = hound::WavSpec {
-                channels: 2,
-                sample_rate,
-                bits_per_sample: bits,
-                sample_format: if bits == 32 {
-                    hound::SampleFormat::Float
-                } else {
-                    hound::SampleFormat::Int
+            // The same renderer the app uses, so a CLI render and an in-app
+            // one cannot drift apart -- and file layers work in both.
+            let rendered = render_to_wav(
+                &preset,
+                ExportOptions { sample_rate, bits, seconds },
+                &out,
+                |p| {
+                    print!("\r  rendering {:>3.0}%", p * 100.0);
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
                 },
-            };
-            let mut w = hound::WavWriter::create(&out, spec)?;
-            match bits {
-                32 => {
-                    for s in &buf {
-                        w.write_sample(*s)?;
-                    }
-                }
-                24 | 16 => {
-                    // Dither only when quantising. Undithered truncation of a
-                    // long sustained sine leaves correlated error that reads
-                    // as a faint tone rather than as noise.
-                    let mut d = Dither::new(bits as u32, 0x7A5E);
-                    let peak = ((1i32 << (bits - 1)) - 1) as f64;
-                    for s in &buf {
-                        let v = d.process(*s as f64).clamp(-1.0, 1.0);
-                        w.write_sample((v * peak) as i32)?;
-                    }
-                }
-                other => bail!("unsupported bit depth {other}; use 16, 24 or 32"),
-            }
-            w.finalize()?;
+            )
+            .map_err(anyhow::Error::msg)?;
 
+            let elapsed = started.elapsed().as_secs_f64();
             println!(
-                "{} -> {out}  ({:.0}s of audio in {:.2}s, {:.0}x real time)",
+                "\r{} -> {out}  ({:.0}s of audio in {:.2}s, {:.0}x real time)",
                 preset.id,
-                seconds,
+                rendered,
                 elapsed,
-                seconds / elapsed.max(1e-9)
+                rendered / elapsed.max(1e-9)
             );
         }
 

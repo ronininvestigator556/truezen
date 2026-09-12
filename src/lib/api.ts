@@ -36,6 +36,17 @@ export const api = {
   updateTimeline: (timeline: Timeline | null) =>
     invoke<void>("update_timeline", { timeline }),
 
+  addFileLayer: (path: string) => invoke<Preset>("add_file_layer", { path }),
+  setLayerFile: (index: number, path: string) =>
+    invoke<void>("set_layer_file", { index, path }),
+  setLayerLooping: (index: number, looping: boolean) =>
+    invoke<void>("set_layer_looping", { index, looping }),
+  setLayerDuck: (index: number, on: boolean, depth: number) =>
+    invoke<void>("set_layer_duck", { index, on, depth }),
+  removeLayer: (index: number) => invoke<Preset>("remove_layer", { index }),
+  exportAudio: (path: string, seconds: number | null, bits: number) =>
+    invoke<number>("export_audio", { path, seconds, bits }),
+
   setTrackLatched: (track: number, latched: boolean) =>
     invoke<void>("set_track_latched", { track, latched }),
   unlatchAll: () => invoke<void>("unlatch_all"),

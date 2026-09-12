@@ -12,9 +12,11 @@ pub mod noise;
 pub mod osc;
 pub mod preset;
 pub mod smooth;
+pub mod source;
 pub mod timeline;
 
 pub use engine::{Command, Engine, Meters, SessionState, Transport};
 pub use layer::{Layer, LayerConfig, LayerKind};
 pub use preset::{Goal, Preset};
+pub use source::SampleSource;
 pub use timeline::{Breakpoint, Curve, LayerParam, ParamTarget, Timeline, Track};

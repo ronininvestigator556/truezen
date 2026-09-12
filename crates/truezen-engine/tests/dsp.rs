@@ -754,3 +754,245 @@ fn validate_rejects_a_track_targeting_a_missing_layer() {
     };
     assert!(empty.validate(1).is_err(), "accepted a track with no breakpoints");
 }
+
+// ---------------------------------------------------------------------------
+// File layers and ducking
+// ---------------------------------------------------------------------------
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use truezen_engine::engine::Recycled;
+use truezen_engine::source::SampleSource;
+
+/// A steady tone, standing in for a decoded file.
+struct Tone {
+    phase: f64,
+    freq: f64,
+    amp: f32,
+    reads: Arc<AtomicUsize>,
+}
+
+impl Tone {
+    fn new(freq: f64, amp: f32) -> (Self, Arc<AtomicUsize>) {
+        let reads = Arc::new(AtomicUsize::new(0));
+        (
+            Self { phase: 0.0, freq, amp, reads: Arc::clone(&reads) },
+            reads,
+        )
+    }
+}
+
+impl SampleSource for Tone {
+    fn read(&mut self, out: &mut [f32]) -> usize {
+        self.reads.fetch_add(1, Ordering::Relaxed);
+        let frames = out.len() / 2;
+        for f in 0..frames {
+            self.phase = (self.phase + self.freq / SR) % 1.0;
+            let v = (self.phase * std::f64::consts::TAU).sin() as f32 * self.amp;
+            out[f * 2] = v;
+            out[f * 2 + 1] = v;
+        }
+        frames
+    }
+}
+
+fn file_layer() -> LayerConfig {
+    LayerConfig {
+        kind: LayerKind::File,
+        gain: 1.0,
+        ..Default::default()
+    }
+}
+
+/// A file layer with nothing attached must be silent rather than a failure:
+/// a preset whose audio file has been moved should still load and play its
+/// other layers.
+#[test]
+fn a_file_layer_with_no_source_is_silent() {
+    let buf = render(&preset_of(vec![file_layer()]), 2.0);
+    assert!(buf.iter().all(|s| *s == 0.0), "an unattached file layer made sound");
+}
+
+#[test]
+fn an_attached_source_is_audible_and_read_in_blocks() {
+    let mut e = engine_for(&preset_of(vec![file_layer()]));
+    let (tone, reads) = Tone::new(440.0, 0.5);
+    e.apply(Command::AttachSource { index: 0, source: Box::new(tone) });
+
+    let mut out = vec![0.0f32; BLOCK * 2];
+    for _ in 0..20 {
+        e.process(&mut out);
+    }
+
+    let measured = dominant_hz(&channel(&out, 0));
+    assert!((measured - 440.0).abs() < 5.0, "source came through at {measured} Hz");
+    // 20 blocks of 1024 frames pulled in 128-frame chunks.
+    assert!(reads.load(Ordering::Relaxed) >= 100, "source was not read in blocks");
+}
+
+/// Attaching must hand the old source back rather than dropping it in the
+/// audio callback.
+#[test]
+fn replacing_a_source_returns_the_old_one_for_disposal() {
+    let mut e = engine_for(&preset_of(vec![file_layer()]));
+    let (a, _) = Tone::new(440.0, 0.5);
+    assert!(
+        e.apply(Command::AttachSource { index: 0, source: Box::new(a) }).is_none(),
+        "first attach displaced something"
+    );
+
+    let (b, _) = Tone::new(220.0, 0.5);
+    let displaced = e.apply(Command::AttachSource { index: 0, source: Box::new(b) });
+    assert!(
+        matches!(displaced, Some(Recycled::Source(_))),
+        "the replaced source was not handed back"
+    );
+
+    let detached = e.apply(Command::DetachSource { index: 0 });
+    assert!(matches!(detached, Some(Recycled::Source(_))));
+}
+
+/// Attaching audio mid-session must not restart it.
+#[test]
+fn attaching_a_source_preserves_the_clock() {
+    let mut e = engine_for(&preset_of(vec![binaural(200.0, 10.0), file_layer()]));
+    let mut out = vec![0.0f32; BLOCK * 2];
+    for _ in 0..100 {
+        e.process(&mut out);
+    }
+    let before = e.meters().position_s;
+
+    let (tone, _) = Tone::new(300.0, 0.3);
+    e.apply(Command::AttachSource { index: 1, source: Box::new(tone) });
+    e.process(&mut out);
+
+    assert!(
+        e.meters().position_s >= before,
+        "clock went backwards: {before} then {}",
+        e.meters().position_s
+    );
+    assert!((e.meters().position_s - before).abs() < 0.1);
+}
+
+/// The point of ducking: a voice layer pulls the bed down while it speaks.
+#[test]
+fn a_ducking_layer_pulls_the_bed_down() {
+    let bed = LayerConfig {
+        kind: LayerKind::Noise,
+        noise_color: NoiseColor::Pink,
+        gain: 0.8,
+        ..Default::default()
+    };
+    let voice = LayerConfig {
+        kind: LayerKind::File,
+        gain: 1.0,
+        ducks_others: true,
+        duck_depth: 0.8,
+        ..Default::default()
+    };
+
+    // Bed alone, for a reference level.
+    let quiet = rms(&render(&preset_of(vec![bed.clone()]), 3.0));
+
+    // Bed plus a loud ducking source.
+    let mut e = engine_for(&preset_of(vec![bed, voice]));
+    let (tone, _) = Tone::new(300.0, 0.6);
+    e.apply(Command::AttachSource { index: 1, source: Box::new(tone) });
+    let mut out = vec![0.0f32; BLOCK * 2];
+    // Let the sidechain envelope settle past its 10 ms attack.
+    for _ in 0..40 {
+        e.process(&mut out);
+    }
+
+    // Isolate the bed's contribution by muting the voice layer's own output
+    // is not possible here, so compare the noise-band energy instead: with the
+    // duck engaged the total should be dominated by the tone, and the bed
+    // component well below its solo level.
+    let mut ducked = vec![0.0f32; (2.0 * SR) as usize * 2];
+    for c in ducked.chunks_mut(BLOCK * 2) {
+        e.process(c);
+    }
+    let (mags, bin_hz) = spectrum(&channel(&ducked, 0));
+    // Pink noise energy well away from the 300 Hz tone and its neighbours.
+    let band: f64 = mags[(2_000.0 / bin_hz) as usize..(6_000.0 / bin_hz) as usize]
+        .iter()
+        .map(|m| m * m)
+        .sum();
+
+    let (qmags, qbin) = spectrum(&channel(&render(&preset_of(vec![LayerConfig {
+        kind: LayerKind::Noise,
+        noise_color: NoiseColor::Pink,
+        gain: 0.8,
+        ..Default::default()
+    }]), 3.0), 0));
+    let quiet_band: f64 = qmags[(2_000.0 / qbin) as usize..(6_000.0 / qbin) as usize]
+        .iter()
+        .map(|m| m * m)
+        .sum();
+
+    assert!(quiet > 0.0);
+    assert!(
+        band < quiet_band * 0.35,
+        "bed was not ducked: {band:.3e} against {quiet_band:.3e} unducked"
+    );
+}
+
+/// Ducking must recover once the voice stops, or the bed stays buried.
+#[test]
+fn the_bed_returns_after_the_ducking_source_goes_quiet() {
+    /// Loud for a while, then silent.
+    struct Burst {
+        n: usize,
+        loud_frames: usize,
+    }
+    impl SampleSource for Burst {
+        fn read(&mut self, out: &mut [f32]) -> usize {
+            let frames = out.len() / 2;
+            for f in 0..frames {
+                let v = if self.n < self.loud_frames {
+                    if self.n.is_multiple_of(2) { 0.6 } else { -0.6 }
+                } else {
+                    0.0
+                };
+                out[f * 2] = v;
+                out[f * 2 + 1] = v;
+                self.n += 1;
+            }
+            frames
+        }
+    }
+
+    let mut e = engine_for(&preset_of(vec![
+        LayerConfig { kind: LayerKind::Noise, gain: 0.8, ..Default::default() },
+        LayerConfig {
+            kind: LayerKind::File,
+            gain: 1.0,
+            ducks_others: true,
+            duck_depth: 0.9,
+            ..Default::default()
+        },
+    ]));
+    e.apply(Command::AttachSource {
+        index: 1,
+        source: Box::new(Burst { n: 0, loud_frames: (SR * 0.5) as usize }),
+    });
+
+    let mut out = vec![0.0f32; BLOCK * 2];
+    // During the burst.
+    for _ in 0..15 {
+        e.process(&mut out);
+    }
+    let during = rms(&out);
+
+    // Well past the burst and the 400 ms release.
+    for _ in 0..120 {
+        e.process(&mut out);
+    }
+    let after = rms(&out);
+
+    assert!(during > 0.0 && after > 0.0);
+    assert!(
+        after > during * 0.2,
+        "bed did not recover: {after:.4} after against {during:.4} during"
+    );
+}

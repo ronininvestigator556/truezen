@@ -10,9 +10,27 @@
     onparam: (index: number, param: LayerParam, value: number) => void;
     onenabled: (index: number, on: boolean) => void;
     onrelease: (track: number) => void;
+    onpickfile: (index: number) => void;
+    onlooping: (index: number, looping: boolean) => void;
+    onduck: (index: number, on: boolean) => void;
+    onremove: (index: number) => void;
   }
 
-  let { layer, index, trackFor, onparam, onenabled, onrelease }: Props = $props();
+  let {
+    layer,
+    index,
+    trackFor,
+    onparam,
+    onenabled,
+    onrelease,
+    onpickfile,
+    onlooping,
+    onduck,
+    onremove,
+  }: Props = $props();
+
+  /// Just the filename: the full path is too long for a card header.
+  let fileName = $derived(layer.file_path?.split(/[\\/]/).pop() ?? null);
 
   let expanded = $state(false);
 
@@ -21,9 +39,10 @@
     monaural: "monaural",
     isochronic: "isochronic",
     noise: "noise",
+    file: "audio file",
   };
 
-  let hasTone = $derived(layer.kind !== "noise");
+  let hasTone = $derived(layer.kind !== "noise" && layer.kind !== "file");
   let band = $derived(bandFor(layer.beat_hz));
 
   function latch(param: LayerParam) {
@@ -58,7 +77,35 @@
     <button class="more" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
       {expanded ? "less" : "more"}
     </button>
+    <button class="remove" title="Remove this layer" onclick={() => onremove(index)}>&times;</button>
   </header>
+
+  {#if layer.kind === "file"}
+    <div class="filerow">
+      <button class="pick" onclick={() => onpickfile(index)}>
+        {fileName ?? "Choose an audio file…"}
+      </button>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={layer.loop_file}
+          onchange={(e) => onlooping(index, e.currentTarget.checked)}
+        />
+        Loop
+      </label>
+      <label class="check" title="Pull the other layers down while this one is sounding">
+        <input
+          type="checkbox"
+          checked={layer.ducks_others}
+          onchange={(e) => onduck(index, e.currentTarget.checked)}
+        />
+        Duck others
+      </label>
+    </div>
+    {#if !layer.file_path}
+      <p class="note">No file yet, so this layer is silent.</p>
+    {/if}
+  {/if}
 
   <div class="grid">
     {#if hasTone}
@@ -246,6 +293,57 @@
     letter-spacing: 0.06em;
     color: var(--muted);
     font-family: var(--mono);
+  }
+  .remove {
+    font-size: 15px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+  .remove:hover {
+    color: var(--danger);
+  }
+  .filerow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 11px;
+    flex-wrap: wrap;
+  }
+  .pick {
+    flex: 1;
+    min-width: 160px;
+    text-align: left;
+    font-size: 11.5px;
+    font-family: var(--mono);
+    padding: 6px 9px;
+    border-radius: 6px;
+    border: 1px dashed var(--line-hi);
+    background: var(--sunken);
+    color: var(--fg);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pick:hover {
+    border-color: var(--accent-dim);
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .kind-file {
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
   }
   .more {
     font-size: 10px;

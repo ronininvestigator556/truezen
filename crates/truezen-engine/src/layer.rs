@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::noise::{FilterMode, NoiseColor, NoiseGen, Svf};
 use crate::osc::{Phasor, Waveform};
+use crate::source::{SampleSource, Voice};
 use crate::smooth::Smoother;
 
 /// How a layer produces its beat.
@@ -27,6 +28,10 @@ pub enum LayerKind {
     /// Filtered noise bed. Masks room sound and gives the tones something to
     /// sit in.
     Noise,
+    /// Audio decoded from a file the user supplied -- music, rain, or a spoken
+    /// guidance track. The samples arrive from the host; the engine never
+    /// touches the filesystem.
+    File,
 }
 
 fn t() -> bool {
@@ -55,6 +60,9 @@ fn default_cutoff() -> f64 {
 }
 fn default_q() -> f64 {
     0.707
+}
+fn default_duck() -> f64 {
+    0.6
 }
 
 /// Serialisable layer settings. This is the on-disk preset shape, so every
@@ -120,6 +128,21 @@ pub struct LayerConfig {
     pub lfo_rate_hz: f64,
     #[serde(default)]
     pub lfo_depth: f64,
+
+    // --- file ---
+    /// Remembered so the preset can re-open the file on load. The engine never
+    /// reads it; the host does.
+    #[serde(default)]
+    pub file_path: Option<String>,
+    #[serde(default = "t")]
+    pub loop_file: bool,
+    /// Pull every other layer down while this one is sounding. Intended for a
+    /// spoken guidance track over a bed.
+    #[serde(default)]
+    pub ducks_others: bool,
+    /// How far to duck, 0 none .. 1 full.
+    #[serde(default = "default_duck")]
+    pub duck_depth: f64,
 }
 
 impl Default for LayerConfig {
@@ -144,6 +167,10 @@ impl Default for LayerConfig {
             filter_q: default_q(),
             lfo_rate_hz: 0.0,
             lfo_depth: 0.0,
+            file_path: None,
+            loop_file: true,
+            ducks_others: false,
+            duck_depth: default_duck(),
         }
     }
 }
@@ -187,6 +214,10 @@ pub struct Layer {
     svf_r: Svf,
     lfo: Phasor,
     am: Phasor,
+
+    /// Attached by the host for a file layer. Absent means the layer is
+    /// silent, which is what a preset referencing a missing file produces.
+    voice: Option<Voice>,
 }
 
 /// Frequency glides slower than gain: fast enough to feel responsive under a
@@ -230,6 +261,7 @@ impl Layer {
             // Start at trough so a breathing cue swells in rather than
             // beginning at full level.
             am: Phasor::with_phase(0.75),
+            voice: None,
         };
         layer.refresh_filter();
         layer
@@ -289,6 +321,28 @@ impl Layer {
         let d = depth.clamp(0.0, 1.0);
         self.config.depth = d;
         self.depth.set_target(d);
+    }
+
+    /// Give this layer a source of audio. Returns whatever was attached
+    /// before, so the caller can drop it off the audio thread.
+    pub fn attach_source(&mut self, source: Box<dyn SampleSource>) -> Option<Box<dyn SampleSource>> {
+        let previous = self.voice.take();
+        self.voice = Some(Voice::new(source));
+        previous.map(Voice::into_source)
+    }
+
+    pub fn detach_source(&mut self) -> Option<Box<dyn SampleSource>> {
+        self.voice.take().map(Voice::into_source)
+    }
+
+    pub fn has_source(&self) -> bool {
+        self.voice.is_some()
+    }
+
+    /// True when a file layer's source has run dry, so the UI can say so
+    /// rather than leaving the user wondering why a layer is silent.
+    pub fn source_starved(&self) -> bool {
+        self.voice.as_ref().is_some_and(Voice::starved)
     }
 
     pub fn set_filter(&mut self, cutoff_hz: f64, q: f64) {
@@ -406,6 +460,12 @@ impl Layer {
                 let m = self.osc_a.tick_wave(wave) * self.envelope(beat);
                 (m, m)
             }
+            LayerKind::File => match self.voice.as_mut() {
+                Some(v) => v.next_frame(),
+                // A preset whose file is missing plays as silence rather than
+                // refusing to load.
+                None => (0.0, 0.0),
+            },
             LayerKind::Noise => {
                 let color = self.config.noise_color;
                 let mode = self.config.filter_mode;

@@ -7,10 +7,12 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+use truezen_engine::layer::{LayerConfig, LayerKind};
 use truezen_engine::preset::{Goal, Preset};
 use truezen_engine::timeline::{LayerParam, Timeline};
 use truezen_engine::Meters;
+use truezen_host::export::{render_to_wav, ExportOptions};
 use truezen_host::{AudioHost, DeviceInfo, HostStatus, Stats};
 
 mod store;
@@ -345,6 +347,168 @@ fn set_layer_enabled(index: usize, on: bool, state: State) -> Cmd<()> {
     })
 }
 
+// --- audio file layers ---------------------------------------------------
+
+/// Rebuild the session from the edited preset, returning to where it was.
+///
+/// Adding or removing a layer changes the shape of the layer stack, which the
+/// engine can only take as a whole; keeping the position makes it feel like an
+/// edit rather than a restart.
+fn reload_in_place(app: &mut App) -> Cmd<()> {
+    let preset = app.current.clone().ok_or("nothing is loaded")?;
+    let at = app.host()?.meters().position_s;
+    app.host()?.load_preset(preset).map_err(|e| e.to_string())?;
+    if at > 0.0 {
+        app.host()?.seek(at).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn add_file_layer(path: String, state: State) -> Cmd<Preset> {
+    let name = std::path::Path::new(&path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Audio")
+        .to_string();
+
+    with(&state, |app| {
+        let preset = app.current.as_mut().ok_or("load a preset first")?;
+        preset.layers.push(LayerConfig {
+            name,
+            kind: LayerKind::File,
+            // Imported audio joins under the tones, not over them.
+            gain: 0.35,
+            file_path: Some(path.clone()),
+            loop_file: true,
+            ..Default::default()
+        });
+        app.touch();
+        reload_in_place(app)?;
+        app.current.clone().ok_or_else(|| "nothing is loaded".into())
+    })
+}
+
+#[tauri::command]
+fn set_layer_file(index: usize, path: String, state: State) -> Cmd<()> {
+    with(&state, |app| {
+        let looping = {
+            let preset = app.current.as_mut().ok_or("nothing is loaded")?;
+            let layer = preset.layers.get_mut(index).ok_or("no such layer")?;
+            layer.file_path = Some(path.clone());
+            layer.loop_file
+        };
+        app.touch();
+        app.host()?
+            .attach_file(index, path, looping)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn set_layer_looping(index: usize, looping: bool, state: State) -> Cmd<()> {
+    with(&state, |app| {
+        let path = {
+            let preset = app.current.as_mut().ok_or("nothing is loaded")?;
+            let layer = preset.layers.get_mut(index).ok_or("no such layer")?;
+            layer.loop_file = looping;
+            layer.file_path.clone()
+        };
+        app.touch();
+        // Looping is decided when the file is opened, so it reopens.
+        match path {
+            Some(p) => app.host()?.attach_file(index, p, looping).map_err(|e| e.to_string()),
+            None => Ok(()),
+        }
+    })
+}
+
+#[tauri::command]
+fn set_layer_duck(index: usize, on: bool, depth: f64, state: State) -> Cmd<()> {
+    with(&state, |app| {
+        if let Some(p) = app.current.as_mut() {
+            if let Some(l) = p.layers.get_mut(index) {
+                l.ducks_others = on;
+                l.duck_depth = depth;
+            }
+        }
+        app.touch();
+        app.host()?
+            .set_layer_duck(index, on, depth)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn remove_layer(index: usize, state: State) -> Cmd<Preset> {
+    with(&state, |app| {
+        {
+            let preset = app.current.as_mut().ok_or("nothing is loaded")?;
+            if index >= preset.layers.len() {
+                return Err("no such layer".into());
+            }
+            if preset.layers.len() == 1 {
+                return Err("a preset needs at least one layer".into());
+            }
+            preset.layers.remove(index);
+            // Automation targets layers by index, so anything pointing past
+            // the removed one would silently drive the wrong parameter.
+            if let Some(tl) = preset.timeline.as_mut() {
+                tl.tracks.retain(|t| match t.target {
+                    truezen_engine::timeline::ParamTarget::Layer { index: i, .. } => i != index,
+                    _ => true,
+                });
+                for track in tl.tracks.iter_mut() {
+                    if let truezen_engine::timeline::ParamTarget::Layer { index: i, .. } =
+                        &mut track.target
+                    {
+                        if *i > index {
+                            *i -= 1;
+                        }
+                    }
+                }
+            }
+            preset.refresh_headphone_flag();
+        }
+        app.touch();
+        reload_in_place(app)?;
+        app.current.clone().ok_or_else(|| "nothing is loaded".into())
+    })
+}
+
+// --- export --------------------------------------------------------------
+
+#[tauri::command]
+async fn export_audio(
+    path: String,
+    seconds: Option<f64>,
+    bits: u16,
+    app: tauri::AppHandle,
+    state: State<'_>,
+) -> Cmd<f64> {
+    let preset = state
+        .lock()
+        .map_err(|_| "audio state is poisoned".to_string())?
+        .current
+        .clone()
+        .ok_or("nothing is loaded")?;
+
+    // Rendering is CPU-bound and can run for seconds; doing it on the async
+    // runtime's worker would stall every other command.
+    tauri::async_runtime::spawn_blocking(move || {
+        render_to_wav(
+            &preset,
+            ExportOptions { sample_rate: 48_000, bits, seconds },
+            &path,
+            |p| {
+                let _ = app.emit("export-progress", p);
+            },
+        )
+    })
+    .await
+    .map_err(|e| format!("the render did not finish: {e}"))?
+}
+
 // --- timeline ------------------------------------------------------------
 
 /// Replace the session's automation.
@@ -497,6 +661,12 @@ pub fn run() {
             set_layer_enabled,
             set_track_latched,
             update_timeline,
+            add_file_layer,
+            set_layer_file,
+            set_layer_looping,
+            set_layer_duck,
+            remove_layer,
+            export_audio,
             unlatch_all,
             poll,
             health,

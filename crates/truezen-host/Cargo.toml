@@ -12,8 +12,11 @@ rtrb = "0.4"
 triple_buffer = "9"
 thiserror = { workspace = true }
 serde = { workspace = true }
+hound = { workspace = true }
+symphonia = { version = "0.6", features = ["all-codecs", "all-formats"] }
 
 [dev-dependencies]
+realfft = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 
 [[example]]

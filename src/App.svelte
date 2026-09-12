@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { listen } from "@tauri-apps/api/event";
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { api } from "./lib/api";
   import { clock } from "./lib/curve";
@@ -41,6 +42,7 @@
   let source = $state<PresetSource | null>(null);
   let libraryDir = $state("");
   let notice = $state<string | null>(null);
+  let exporting = $state<number | null>(null);
 
   let playing = $derived(meters?.playing ?? false);
   let sampleRate = $derived(health?.status.sampleRate || 48000);
@@ -153,6 +155,90 @@
       await refreshLibrary(preset?.id);
       announce(reverting ? "Reverted to the built-in preset." : "Deleted.");
     } catch (e) {
+      fail(e);
+    }
+  }
+
+  const AUDIO_EXTS = ["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus", "aiff", "aif"];
+
+  async function pickAudio(): Promise<string | null> {
+    const path = await openDialog({
+      multiple: false,
+      filters: [{ name: "Audio", extensions: AUDIO_EXTS }],
+    });
+    return typeof path === "string" ? path : null;
+  }
+
+  async function addFileLayer() {
+    try {
+      const path = await pickAudio();
+      if (!path) return;
+      preset = await api.addFileLayer(path);
+      dirty = true;
+      announce("Added the audio layer.");
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function pickLayerFile(index: number) {
+    try {
+      const path = await pickAudio();
+      if (!path) return;
+      await api.setLayerFile(index, path);
+      if (preset?.layers[index]) preset.layers[index].file_path = path;
+      dirty = true;
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  function setLooping(index: number, looping: boolean) {
+    if (preset?.layers[index]) preset.layers[index].loop_file = looping;
+    dirty = true;
+    api.setLayerLooping(index, looping).catch(fail);
+  }
+
+  function setDuck(index: number, on: boolean) {
+    const layer = preset?.layers[index];
+    if (layer) layer.ducks_others = on;
+    dirty = true;
+    api.setLayerDuck(index, on, layer?.duck_depth ?? 0.6).catch(fail);
+  }
+
+  async function removeLayer(index: number) {
+    try {
+      preset = await api.removeLayer(index);
+      dirty = true;
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function exportAudio() {
+    if (!preset) return;
+    try {
+      // An open-ended preset has no length of its own, so pick a sensible one.
+      const seconds = preset.timeline ? null : 1800;
+      const path = await saveDialog({
+        defaultPath: `${preset.id}.wav`,
+        filters: [{ name: "WAV audio", extensions: ["wav"] }],
+      });
+      if (!path) return;
+
+      exporting = 0;
+      const unlisten = await listen<number>("export-progress", (e) => {
+        exporting = e.payload;
+      });
+      try {
+        const rendered = await api.exportAudio(path, seconds, 24);
+        announce(`Rendered ${Math.round(rendered / 60)} minutes to ${path}.`);
+      } finally {
+        unlisten();
+        exporting = null;
+      }
+    } catch (e) {
+      exporting = null;
       fail(e);
     }
   }
@@ -432,6 +518,8 @@
               ondelete={remove}
               onexport={exportPreset}
               onimport={importPreset}
+              onrender={exportAudio}
+              rendering={exporting}
             />
             <div class="rackhead">
               <h2>{preset.name}</h2>
@@ -445,8 +533,14 @@
                 onparam={onParam}
                 onenabled={onEnabled}
                 onrelease={(track) => api.setTrackLatched(track, false).catch(fail)}
+                onpickfile={pickLayerFile}
+                onlooping={setLooping}
+                onduck={setDuck}
+                onremove={removeLayer}
               />
             {/each}
+
+            <button class="addlayer" onclick={addFileLayer}>+ Add an audio file layer</button>
 
             {#if preset.timeline && preset.timeline.tracks.length > 0}
               <TimelineEditor
@@ -715,6 +809,20 @@
     margin: 0 0 4px;
     line-height: 1.5;
     max-width: 68ch;
+  }
+  .addlayer {
+    align-self: flex-start;
+    font-size: 11.5px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px dashed var(--line-hi);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .addlayer:hover {
+    border-color: var(--accent-dim);
+    color: var(--accent);
   }
   .noauto {
     font-size: 11.5px;

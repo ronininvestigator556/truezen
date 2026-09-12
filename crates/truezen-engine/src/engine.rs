@@ -13,6 +13,7 @@ use crate::layer::{Layer, LayerConfig};
 use crate::mixer::Limiter;
 use crate::preset::Preset;
 use crate::smooth::Smoother;
+use crate::source::SampleSource;
 use crate::timeline::{LayerParam, ParamTarget, Timeline};
 
 /// Automation is re-evaluated this often. At 48 kHz that is every 1.3 ms --
@@ -24,6 +25,17 @@ const TAU_MASTER: f64 = 0.03;
 /// Transport fades. Long enough to be inaudible as a click, short enough that
 /// pause feels immediate.
 const TAU_TRANSPORT: f64 = 0.015;
+/// Sidechain level at which ducking reaches full depth, linear (-20 dBFS).
+const DUCK_REFERENCE: f64 = 0.1;
+
+/// One-pole coefficient for a given time constant.
+fn one_pole(tau_s: f64, sample_rate: f64) -> f64 {
+    if tau_s <= 0.0 || sample_rate <= 0.0 {
+        1.0
+    } else {
+        1.0 - (-1.0 / (tau_s * sample_rate)).exp()
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum Transport {
@@ -98,6 +110,7 @@ impl TimelineSwap {
 pub enum Recycled {
     Session(Box<SessionState>),
     Timeline(Box<TimelineSwap>),
+    Source(Box<dyn SampleSource>),
 }
 
 /// A snapshot for the UI. `Copy` and scalar-only, so it can go through a
@@ -132,6 +145,14 @@ pub enum Command {
     SetMasterGain(f64),
     SetLayerEnabled { index: usize, on: bool },
     SetLayerParam { index: usize, param: LayerParam, value: f64 },
+    /// Give a layer a source of audio. Attaching in place rather than
+    /// rebuilding the session means adding a backing track does not restart
+    /// what is already playing.
+    AttachSource { index: usize, source: Box<dyn SampleSource> },
+    DetachSource { index: usize },
+    /// Toggle sidechain ducking live. A structural reload would restart the
+    /// session, which is too much for flipping a switch.
+    SetLayerDuck { index: usize, on: bool, depth: f64 },
     /// Swap the automation without disturbing the layers or the clock. Editing
     /// a curve mid-session must not restart the session.
     ReplaceTimeline(Box<TimelineSwap>),
@@ -156,6 +177,10 @@ pub struct Engine {
     pos: u64,
     fade: f64,
     finished: bool,
+    /// Sidechain envelope of the ducking layers.
+    duck_env: f64,
+    duck_attack: f64,
+    duck_release: f64,
     meters: Meters,
 }
 
@@ -175,6 +200,11 @@ impl Engine {
             pos: 0,
             fade: 1.0,
             finished: false,
+            duck_env: 0.0,
+            // Fast down, slow up: the bed should get out of the way the
+            // instant a voice starts and come back without drawing attention.
+            duck_attack: one_pole(0.010, sample_rate),
+            duck_release: one_pole(0.400, sample_rate),
             meters: Meters::default(),
         }
     }
@@ -259,6 +289,26 @@ impl Engine {
                 // otherwise the next automation block, 1.3 ms later, silently
                 // undoes the edit.
                 self.latch_matching(ParamTarget::Layer { index, param });
+            }
+            Command::AttachSource { index, source } => {
+                if let Some(l) = self.state.layers.get_mut(index) {
+                    if let Some(old) = l.attach_source(source) {
+                        return Some(Recycled::Source(old));
+                    }
+                }
+            }
+            Command::DetachSource { index } => {
+                if let Some(l) = self.state.layers.get_mut(index) {
+                    if let Some(old) = l.detach_source() {
+                        return Some(Recycled::Source(old));
+                    }
+                }
+            }
+            Command::SetLayerDuck { index, on, depth } => {
+                if let Some(l) = self.state.layers.get_mut(index) {
+                    l.config.ducks_others = on;
+                    l.config.duck_depth = depth.clamp(0.0, 1.0);
+                }
             }
             Command::SetTrackLatched { track, latched } => {
                 if let Some(f) = self.state.track_latched.get_mut(track) {
@@ -412,13 +462,42 @@ impl Engine {
                     continue;
                 }
 
-                let mut l = 0.0f64;
-                let mut r = 0.0f64;
+                // Ducking layers are summed separately so the rest can be
+                // pulled down underneath them.
+                let mut duck_l = 0.0f64;
+                let mut duck_r = 0.0f64;
+                let mut duck_peak = 0.0f64;
+                let mut bed_l = 0.0f64;
+                let mut bed_r = 0.0f64;
+                let mut depth = 0.0f64;
+
                 for layer in self.state.layers.iter_mut() {
                     let (ll, rr) = layer.tick();
-                    l += ll;
-                    r += rr;
+                    if layer.config.ducks_others {
+                        duck_l += ll;
+                        duck_r += rr;
+                        duck_peak = duck_peak.max(ll.abs().max(rr.abs()));
+                        depth = depth.max(layer.config.duck_depth.clamp(0.0, 1.0));
+                    } else {
+                        bed_l += ll;
+                        bed_r += rr;
+                    }
                 }
+
+                let coeff = if duck_peak > self.duck_env {
+                    self.duck_attack
+                } else {
+                    self.duck_release
+                };
+                self.duck_env += (duck_peak - self.duck_env) * coeff;
+
+                // Referenced to -20 dBFS: speech well below that should not
+                // flatten the bed, and anything at or above it ducks fully.
+                let amount = (self.duck_env / DUCK_REFERENCE).clamp(0.0, 1.0);
+                let bed_gain = 1.0 - depth * amount;
+
+                let l = duck_l + bed_l * bed_gain;
+                let r = duck_r + bed_r * bed_gain;
 
                 let g = master * tg * self.fade;
                 let l = self.limiter.process(l * g);
