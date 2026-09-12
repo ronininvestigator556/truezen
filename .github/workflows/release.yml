@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build and publish
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/linux-deps
+        if: runner.os == 'Linux'
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+
+      # Tauri cannot cross-compile between desktop platforms, so each build
+      # has to happen on its own runner.
+      - run: npx tauri build
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p dist-release
+          # Only the installable artefacts; the raw .app and unpacked
+          # directories are build intermediates.
+          find target/release/bundle \
+            \( -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \
+               -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \) \
+            -type f -exec cp {} dist-release/ \;
+          ls -lh dist-release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: dist-release/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          ls -lh artifacts
+          # Unsigned builds: macOS Gatekeeper and Windows SmartScreen will
+          # both object, so say so rather than letting people hit it cold.
+          cat > notes.md <<'NOTES'
+          ## Installing
+
+          These builds are **not code-signed**, so the operating system will
+          warn about them.
+
+          - **macOS** — the first launch is blocked. Right-click the app and
+            choose Open, or run
+            `xattr -dr com.apple.quarantine /Applications/TrueZen.app`.
+          - **Windows** — SmartScreen shows a warning. Choose More info, then
+            Run anyway.
+
+          ## Before you start
+
+          Audio entrainment carries a rare but documented seizure risk for
+          people with photosensitive or audiogenic epilepsy. Do not use
+          TrueZen while driving or operating machinery.
+
+          Binaural presets need headphones: the beat only exists when each ear
+          hears a different frequency.
+          NOTES
+          gh release create "$TAG" artifacts/* \
+            --title "TrueZen $TAG" \
+            --notes-file notes.md \
+            --verify-tag

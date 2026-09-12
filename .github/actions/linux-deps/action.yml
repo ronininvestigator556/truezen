@@ -1,0 +1,24 @@
+name: Linux build dependencies
+description: >
+  System libraries TrueZen needs on Linux. Tauri renders through WebKitGTK,
+  cpal talks to ALSA, and the wake-lock goes through D-Bus -- none of which
+  ship on a bare runner.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        if [ "$RUNNER_OS" != "Linux" ]; then exit 0; fi
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          libwebkit2gtk-4.1-dev \
+          libappindicator3-dev \
+          librsvg2-dev \
+          libxdo-dev \
+          libssl-dev \
+          libasound2-dev \
+          libdbus-1-dev \
+          patchelf \
+          build-essential \
+          file
