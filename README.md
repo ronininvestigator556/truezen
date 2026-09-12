@@ -96,8 +96,10 @@ underneath it while it speaks and comes back gently afterwards.
 
 ## Rendering to a file
 
-**Render audio…** writes the session to a 24-bit WAV, roughly 500x faster than
-real time, so you can put it on a phone. It drives the same
+**Render audio…** asks how many minutes and shows the size before opening the
+save dialog — uncompressed audio is about 17 MB a minute, so a full session is
+most of a gigabyte. It writes a 24-bit WAV roughly 500x faster than real time,
+so you can put it on a phone. It drives the same
 `Engine::process` as live playback and decodes file layers directly, so the
 render *is* the session rather than an approximation of it.
 

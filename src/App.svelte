@@ -215,11 +215,9 @@
     }
   }
 
-  async function exportAudio() {
+  async function exportAudio(seconds: number) {
     if (!preset) return;
     try {
-      // An open-ended preset has no length of its own, so pick a sensible one.
-      const seconds = preset.timeline ? null : 1800;
       const path = await saveDialog({
         defaultPath: `${preset.id}.wav`,
         filters: [{ name: "WAV audio", extensions: ["wav"] }],
@@ -232,7 +230,8 @@
       });
       try {
         const rendered = await api.exportAudio(path, seconds, 24);
-        announce(`Rendered ${Math.round(rendered / 60)} minutes to ${path}.`);
+        const mins = Math.round(rendered / 60);
+        announce(`Rendered ${mins} ${mins === 1 ? "minute" : "minutes"} to ${path}.`);
       } finally {
         unlisten();
         exporting = null;
@@ -520,6 +519,7 @@
               onimport={importPreset}
               onrender={exportAudio}
               rendering={exporting}
+              durationS={duration}
             />
             <div class="rackhead">
               <h2>{preset.name}</h2>

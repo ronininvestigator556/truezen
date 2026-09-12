@@ -11,9 +11,11 @@
     ondelete: () => void;
     onexport: () => void;
     onimport: () => void;
-    onrender: () => void;
+    onrender: (seconds: number) => void;
     /** Render progress 0..1, or null when not rendering. */
     rendering: number | null;
+    /** The preset's own length in seconds; 0 when it runs open-ended. */
+    durationS: number;
   }
   let {
     name,
@@ -27,7 +29,32 @@
     onimport,
     onrender,
     rendering,
+    durationS,
   }: Props = $props();
+
+  let choosingLength = $state(false);
+  let minutes = $state(30);
+
+  // 24-bit stereo at 48 kHz. Uncompressed audio is big, and a 45-minute
+  // session is most of a gigabyte -- worth saying before the save dialog
+  // rather than after the file lands.
+  const BYTES_PER_SECOND = 48_000 * 2 * 3;
+
+  let estimate = $derived(() => {
+    const bytes = minutes * 60 * BYTES_PER_SECOND;
+    const gb = bytes / 1_000_000_000;
+    return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1_000_000)} MB`;
+  });
+
+  function beginRender() {
+    minutes = durationS > 0 ? Math.round(durationS / 60) : 30;
+    choosingLength = true;
+  }
+
+  function confirmRender() {
+    choosingLength = false;
+    onrender(Math.max(1, minutes) * 60);
+  }
 
   let naming = $state(false);
   let draft = $state("");
@@ -64,7 +91,23 @@
 
   <div class="spacer"></div>
 
-  {#if naming}
+  {#if choosingLength}
+    <span class="prompt">Render how many minutes?</span>
+    <input
+      class="mins"
+      type="number"
+      min="1"
+      max="480"
+      bind:value={minutes}
+      onkeydown={(e) => {
+        if (e.key === "Enter") confirmRender();
+        if (e.key === "Escape") choosingLength = false;
+      }}
+    />
+    <span class="size">about {estimate()} as 24-bit WAV</span>
+    <button onclick={confirmRender}>Choose a file…</button>
+    <button onclick={() => (choosingLength = false)}>Cancel</button>
+  {:else if naming}
     <input
       bind:this={input}
       class="namer"
@@ -83,7 +126,7 @@
         : "Save changes"
     }>Save</button>
     <button onclick={beginSaveAs}>Save as…</button>
-    <button onclick={onrender} disabled={rendering !== null}>
+    <button onclick={beginRender} disabled={rendering !== null}>
       {rendering === null ? "Render audio…" : `Rendering ${Math.round(rendering * 100)}%`}
     </button>
     <button onclick={onexport}>Export…</button>
@@ -160,6 +203,25 @@
   }
   .del {
     color: var(--danger);
+  }
+  .prompt {
+    font-size: 11px;
+    color: var(--fg-dim);
+  }
+  .mins {
+    width: 62px;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: var(--sunken);
+    color: var(--fg);
+    outline: none;
+  }
+  .size {
+    font-size: 10.5px;
+    color: var(--muted);
   }
   .namer {
     flex: 1;
