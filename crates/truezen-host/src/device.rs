@@ -63,7 +63,8 @@ pub fn resolve(id: Option<&str>) -> Result<Device, HostError> {
             }
         }
     }
-    host.default_output_device().ok_or(HostError::NoOutputDevice)
+    host.default_output_device()
+        .ok_or(HostError::NoOutputDevice)
 }
 
 /// The chosen stream configuration and the sample format to render in.

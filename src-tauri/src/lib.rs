@@ -94,7 +94,9 @@ impl App {
         if self.active_session.is_some() {
             return;
         }
-        let Some(preset) = self.current.as_ref() else { return };
+        let Some(preset) = self.current.as_ref() else {
+            return;
+        };
         match self.journal.start(preset) {
             Ok(id) => {
                 self.active_session = Some(id);
@@ -144,7 +146,9 @@ impl App {
 type State<'a> = tauri::State<'a, Mutex<App>>;
 
 fn with<T>(state: &State, f: impl FnOnce(&mut App) -> Cmd<T>) -> Cmd<T> {
-    let mut app = state.lock().map_err(|_| "audio state is poisoned".to_string())?;
+    let mut app = state
+        .lock()
+        .map_err(|_| "audio state is poisoned".to_string())?;
     f(&mut app)
 }
 
@@ -179,7 +183,9 @@ fn summarise(p: &Preset, source: Source) -> PresetSummary {
 
 #[tauri::command]
 fn list_presets(state: State) -> Vec<PresetSummary> {
-    let Ok(app) = state.lock() else { return Vec::new() };
+    let Ok(app) = state.lock() else {
+        return Vec::new();
+    };
     app.store
         .all()
         .iter()
@@ -207,9 +213,14 @@ fn load_preset(id: String, state: State) -> Cmd<Preset> {
     with(&state, |app| {
         // Close out whatever was playing before switching away from it.
         app.end_session(false);
-        let (preset, _) = app.store.get(&id).ok_or_else(|| format!("no preset '{id}'"))?;
+        let (preset, _) = app
+            .store
+            .get(&id)
+            .ok_or_else(|| format!("no preset '{id}'"))?;
         preset.validate()?;
-        app.host()?.load_preset(preset.clone()).map_err(|e| e.to_string())?;
+        app.host()?
+            .load_preset(preset.clone())
+            .map_err(|e| e.to_string())?;
         app.current = Some(preset.clone());
         app.dirty = false;
         Ok(preset)
@@ -232,9 +243,18 @@ struct Editing {
 #[tauri::command]
 fn editing(state: State) -> Editing {
     let Ok(app) = state.lock() else {
-        return Editing { preset: None, dirty: false, source: None, library_dir: String::new() };
+        return Editing {
+            preset: None,
+            dirty: false,
+            source: None,
+            library_dir: String::new(),
+        };
     };
-    let source = app.current.as_ref().and_then(|p| app.store.get(&p.id)).map(|(_, s)| s);
+    let source = app
+        .current
+        .as_ref()
+        .and_then(|p| app.store.get(&p.id))
+        .map(|(_, s)| s);
     Editing {
         preset: app.current.clone(),
         dirty: app.dirty,
@@ -253,7 +273,11 @@ fn save_preset(state: State) -> Cmd<PresetSummary> {
         app.store.save(&preset)?;
         app.current = Some(preset.clone());
         app.dirty = false;
-        let source = app.store.get(&preset.id).map(|(_, s)| s).unwrap_or(Source::User);
+        let source = app
+            .store
+            .get(&preset.id)
+            .map(|(_, s)| s)
+            .unwrap_or(Source::User);
         Ok(summarise(&preset, source))
     })
 }
@@ -288,7 +312,9 @@ fn delete_preset(id: String, state: State) -> Cmd<()> {
         if app.current.as_ref().is_some_and(|p| p.id == id) {
             match app.store.get(&id) {
                 Some((p, _)) => {
-                    app.host()?.load_preset(p.clone()).map_err(|e| e.to_string())?;
+                    app.host()?
+                        .load_preset(p.clone())
+                        .map_err(|e| e.to_string())?;
                     app.current = Some(p);
                 }
                 None => app.current = None,
@@ -302,7 +328,10 @@ fn delete_preset(id: String, state: State) -> Cmd<()> {
 #[tauri::command]
 fn export_preset(id: String, path: String, state: State) -> Cmd<()> {
     with(&state, |app| {
-        let (preset, _) = app.store.get(&id).ok_or_else(|| format!("no preset '{id}'"))?;
+        let (preset, _) = app
+            .store
+            .get(&id)
+            .ok_or_else(|| format!("no preset '{id}'"))?;
         let json = preset.to_json().map_err(|e| e.to_string())?;
         std::fs::write(&path, json).map_err(|e| format!("could not write {path}: {e}"))
     })
@@ -311,7 +340,8 @@ fn export_preset(id: String, path: String, state: State) -> Cmd<()> {
 #[tauri::command]
 fn import_preset(path: String, state: State) -> Cmd<PresetSummary> {
     let text = std::fs::read_to_string(&path).map_err(|e| format!("could not read {path}: {e}"))?;
-    let mut preset = Preset::from_json(&text).map_err(|e| format!("{path} is not a preset: {e}"))?;
+    let mut preset =
+        Preset::from_json(&text).map_err(|e| format!("{path} is not a preset: {e}"))?;
     preset.validate()?;
 
     with(&state, |app| {
@@ -396,7 +426,9 @@ fn journal_replay(id: i64, state: State) -> Cmd<Preset> {
             .journal
             .snapshot(id)?
             .ok_or("that session is no longer in the journal")?;
-        a.host()?.load_preset(preset.clone()).map_err(|e| e.to_string())?;
+        a.host()?
+            .load_preset(preset.clone())
+            .map_err(|e| e.to_string())?;
         a.current = Some(preset.clone());
         // It came from history, not the library, so it is unsaved by nature.
         a.dirty = true;
@@ -406,7 +438,9 @@ fn journal_replay(id: i64, state: State) -> Cmd<Preset> {
 
 #[tauri::command]
 fn seek(seconds: f64, state: State) -> Cmd<()> {
-    with(&state, |a| a.host()?.seek(seconds).map_err(|e| e.to_string()))
+    with(&state, |a| {
+        a.host()?.seek(seconds).map_err(|e| e.to_string())
+    })
 }
 
 // --- parameters ----------------------------------------------------------
@@ -519,7 +553,9 @@ fn add_file_layer(path: String, state: State) -> Cmd<Preset> {
         });
         app.touch();
         reload_in_place(app)?;
-        app.current.clone().ok_or_else(|| "nothing is loaded".into())
+        app.current
+            .clone()
+            .ok_or_else(|| "nothing is loaded".into())
     })
 }
 
@@ -551,7 +587,10 @@ fn set_layer_looping(index: usize, looping: bool, state: State) -> Cmd<()> {
         app.touch();
         // Looping is decided when the file is opened, so it reopens.
         match path {
-            Some(p) => app.host()?.attach_file(index, p, looping).map_err(|e| e.to_string()),
+            Some(p) => app
+                .host()?
+                .attach_file(index, p, looping)
+                .map_err(|e| e.to_string()),
             None => Ok(()),
         }
     })
@@ -606,7 +645,9 @@ fn remove_layer(index: usize, state: State) -> Cmd<Preset> {
         }
         app.touch();
         reload_in_place(app)?;
-        app.current.clone().ok_or_else(|| "nothing is loaded".into())
+        app.current
+            .clone()
+            .ok_or_else(|| "nothing is loaded".into())
     })
 }
 
@@ -632,7 +673,11 @@ async fn export_audio(
     tauri::async_runtime::spawn_blocking(move || {
         render_to_wav(
             &preset,
-            ExportOptions { sample_rate: 48_000, bits, seconds },
+            ExportOptions {
+                sample_rate: 48_000,
+                bits,
+                seconds,
+            },
             &path,
             |p| {
                 let _ = app.emit("export-progress", p);
@@ -680,7 +725,9 @@ fn set_track_latched(track: usize, latched: bool, state: State) -> Cmd<()> {
 
 #[tauri::command]
 fn unlatch_all(state: State) -> Cmd<()> {
-    with(&state, |a| a.host()?.unlatch_all().map_err(|e| e.to_string()))
+    with(&state, |a| {
+        a.host()?.unlatch_all().map_err(|e| e.to_string())
+    })
 }
 
 // --- telemetry -----------------------------------------------------------
@@ -837,7 +884,13 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
-        &[&toggle, &stop, &PredefinedMenuItem::separator(app)?, &show, &quit],
+        &[
+            &toggle,
+            &stop,
+            &PredefinedMenuItem::separator(app)?,
+            &show,
+            &quit,
+        ],
     )?;
 
     let mut builder = TrayIconBuilder::new()

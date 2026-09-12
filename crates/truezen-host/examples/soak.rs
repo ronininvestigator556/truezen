@@ -50,8 +50,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let preset = factory::by_id(&cli.preset)
-        .ok_or_else(|| format!("no factory preset '{}'", cli.preset))?;
+    let preset =
+        factory::by_id(&cli.preset).ok_or_else(|| format!("no factory preset '{}'", cli.preset))?;
 
     let host = AudioHost::spawn(cli.device)?;
     let status = host.status();
@@ -60,7 +60,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         status.device_name.as_deref().unwrap_or("<none>"),
         status.sample_rate,
         status.channels,
-        if status.binaural_capable { "" } else { "  [MONO - binaural will not work]" },
+        if status.binaural_capable {
+            ""
+        } else {
+            "  [MONO - binaural will not work]"
+        },
         preset.name,
         preset.id,
     );
@@ -123,10 +127,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let s = host.stats();
     println!("\n--- results ---");
     println!("callbacks         {}", s.callbacks);
-    println!("overloads         {}   (callback used >80% of its deadline)", s.overloads);
+    println!(
+        "overloads         {}   (callback used >80% of its deadline)",
+        s.overloads
+    );
     println!("stream errors     {}", s.errors);
     println!("dropped commands  {}", s.dropped_commands);
-    println!("peak load         {:.1}%", s.max_load_permille as f64 / 10.0);
+    println!(
+        "peak load         {:.1}%",
+        s.max_load_permille as f64 / 10.0
+    );
     if cli.sweep {
         println!("live param sets   {sweeps}");
     }

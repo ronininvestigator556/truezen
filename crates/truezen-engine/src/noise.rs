@@ -19,7 +19,11 @@ pub struct Rng(u64);
 impl Rng {
     pub fn new(seed: u64) -> Self {
         // A zero state is a fixed point for xorshift, so never allow it.
-        Self(if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed })
+        Self(if seed == 0 {
+            0x9E37_79B9_7F4A_7C15
+        } else {
+            seed
+        })
     }
 
     #[inline]
@@ -195,7 +199,10 @@ mod tests {
         let mut f = Svf::new();
         f.set(200.0, 0.707, 48_000.0);
         let dry: Vec<f64> = (0..100_000).map(|_| n.tick(NoiseColor::White)).collect();
-        let wet: Vec<f64> = dry.iter().map(|&x| f.tick(x, FilterMode::LowPass)).collect();
+        let wet: Vec<f64> = dry
+            .iter()
+            .map(|&x| f.tick(x, FilterMode::LowPass))
+            .collect();
         assert!(rms(&wet) < rms(&dry) * 0.5);
     }
 

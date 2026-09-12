@@ -78,8 +78,11 @@ impl Track {
     /// Breakpoints must be time-ordered for `value_at` to be correct; a
     /// hand-edited preset file may not be.
     pub fn sort(&mut self) {
-        self.points
-            .sort_by(|a, b| a.at_s.partial_cmp(&b.at_s).unwrap_or(std::cmp::Ordering::Equal));
+        self.points.sort_by(|a, b| {
+            a.at_s
+                .partial_cmp(&b.at_s)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     pub fn end_s(&self) -> f64 {
@@ -150,12 +153,8 @@ pub struct Timeline {
 
 impl Timeline {
     pub fn duration(&self) -> f64 {
-        self.duration_s.unwrap_or_else(|| {
-            self.tracks
-                .iter()
-                .map(Track::end_s)
-                .fold(0.0f64, f64::max)
-        })
+        self.duration_s
+            .unwrap_or_else(|| self.tracks.iter().map(Track::end_s).fold(0.0f64, f64::max))
     }
 
     /// Master fade multiplier at time `t`.
@@ -186,12 +185,17 @@ impl Timeline {
             }
         }
         if !self.fade_out_s.is_finite() || self.fade_out_s < 0.0 {
-            return Err(format!("fade-out {} is not a valid length", self.fade_out_s));
+            return Err(format!(
+                "fade-out {} is not a valid length",
+                self.fade_out_s
+            ));
         }
         for (i, track) in self.tracks.iter().enumerate() {
             if let ParamTarget::Layer { index, .. } = track.target {
                 if index >= layer_count {
-                    return Err(format!("track {i} targets layer {index}, which does not exist"));
+                    return Err(format!(
+                        "track {i} targets layer {index}, which does not exist"
+                    ));
                 }
             }
             if track.points.is_empty() {

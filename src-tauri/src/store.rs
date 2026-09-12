@@ -49,7 +49,7 @@ impl Store {
             })
             .collect();
         // Collapse runs of separators and trim them from the ends, so
-            // "My Preset!!" becomes "my-preset" rather than "my-preset--".
+        // "My Preset!!" becomes "my-preset" rather than "my-preset--".
         let collapsed = cleaned
             .split('-')
             .filter(|s| !s.is_empty())
@@ -145,7 +145,10 @@ impl Store {
         if !taken.contains(&base) {
             return base;
         }
-        (2..).map(|n| format!("{base}-{n}")).find(|c| !taken.contains(c)).unwrap()
+        (2..)
+            .map(|n| format!("{base}-{n}"))
+            .find(|c| !taken.contains(c))
+            .unwrap()
     }
 }
 
@@ -209,14 +212,21 @@ mod tests {
         s.delete("deep-theta").unwrap();
         let (reverted, source) = s.get("deep-theta").unwrap();
         assert_eq!(source, Source::Factory);
-        assert_eq!(reverted.name, "Deep Theta", "deleting did not restore the original");
+        assert_eq!(
+            reverted.name, "Deep Theta",
+            "deleting did not restore the original"
+        );
         let _ = std::fs::remove_dir_all(s.dir());
     }
 
     #[test]
     fn unique_id_avoids_collisions() {
         let s = temp_store("unique");
-        assert_eq!(s.unique_id("Deep Theta"), "deep-theta-2", "collided with a factory id");
+        assert_eq!(
+            s.unique_id("Deep Theta"),
+            "deep-theta-2",
+            "collided with a factory id"
+        );
         s.save(&preset("my-thing", "My Thing")).unwrap();
         assert_eq!(s.unique_id("My Thing"), "my-thing-2");
         let _ = std::fs::remove_dir_all(s.dir());

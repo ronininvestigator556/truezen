@@ -88,7 +88,10 @@ fn spectrum_at(signal: &[f64], rate: f64) -> (Vec<f64>, f64) {
     }
     fft.process(&mut input, &mut output).unwrap();
     let scale = 2.0 / wsum;
-    (output.iter().map(|c| c.norm() * scale).collect(), rate / n as f64)
+    (
+        output.iter().map(|c| c.norm() * scale).collect(),
+        rate / n as f64,
+    )
 }
 
 fn spectrum(signal: &[f64]) -> (Vec<f64>, f64) {
@@ -104,7 +107,11 @@ fn dominant_hz_at(signal: &[f64], rate: f64) -> f64 {
         .unwrap();
     let (a, b, c) = (mags[i - 1], mags[i], mags[i + 1]);
     let denom = a - 2.0 * b + c;
-    let offset = if denom.abs() < 1e-18 { 0.0 } else { 0.5 * (a - c) / denom };
+    let offset = if denom.abs() < 1e-18 {
+        0.0
+    } else {
+        0.5 * (a - c) / denom
+    };
     (i as f64 + offset) * bin_hz
 }
 
@@ -141,8 +148,14 @@ fn binaural_carriers_are_split_by_exactly_the_beat() {
         let l = dominant_hz(&channel(&buf, 0));
         let r = dominant_hz(&channel(&buf, 1));
 
-        assert!((l - (carrier - beat / 2.0)).abs() < 0.01, "left {l} for {carrier}/{beat}");
-        assert!((r - (carrier + beat / 2.0)).abs() < 0.01, "right {r} for {carrier}/{beat}");
+        assert!(
+            (l - (carrier - beat / 2.0)).abs() < 0.01,
+            "left {l} for {carrier}/{beat}"
+        );
+        assert!(
+            (r - (carrier + beat / 2.0)).abs() < 0.01,
+            "right {r} for {carrier}/{beat}"
+        );
         assert!(
             ((r - l) - beat).abs() < 0.01,
             "beat came out {} instead of {beat}",
@@ -200,7 +213,10 @@ fn isochronic_sidebands_are_spaced_by_the_beat() {
     }
     // Nothing between the sidebands: that gap is what says the modulation is
     // periodic at the beat rate and not something noisier.
-    assert!(at(carrier + beat / 2.0) < c * 0.01, "energy between sidebands");
+    assert!(
+        at(carrier + beat / 2.0) < c * 0.01,
+        "energy between sidebands"
+    );
 }
 
 /// The raised-cosine ramp is the difference between a clean pulse and a click.
@@ -302,7 +318,10 @@ fn sweeping_the_carrier_live_produces_no_discontinuity() {
 
     // A 400 Hz sine at this amplitude steps by at most ~0.019 per sample; a
     // zipper from an unsmoothed jump would be an order of magnitude larger.
-    assert!(max_delta < 0.05, "carrier sweep produced a step of {max_delta}");
+    assert!(
+        max_delta < 0.05,
+        "carrier sweep produced a step of {max_delta}"
+    );
 }
 
 #[test]
@@ -347,7 +366,11 @@ fn the_limiter_holds_the_ceiling_under_a_deliberately_hot_stack() {
 
     let buf = render(&p, 10.0);
     // -1 dBFS ceiling, with a hair of slack for f32 rounding.
-    assert!(peak(&buf) <= 0.8913 + 1e-4, "peak {} exceeded ceiling", peak(&buf));
+    assert!(
+        peak(&buf) <= 0.8913 + 1e-4,
+        "peak {} exceeded ceiling",
+        peak(&buf)
+    );
     assert!(buf.iter().all(|s| s.is_finite()));
 }
 
@@ -358,8 +381,17 @@ fn every_factory_preset_renders_cleanly() {
     for preset in factory::load_all() {
         let buf = render(&preset, 20.0);
 
-        assert!(buf.iter().all(|s| s.is_finite()), "{}: produced NaN or inf", preset.id);
-        assert!(peak(&buf) <= 0.8913 + 1e-4, "{}: clipped at {}", preset.id, peak(&buf));
+        assert!(
+            buf.iter().all(|s| s.is_finite()),
+            "{}: produced NaN or inf",
+            preset.id
+        );
+        assert!(
+            peak(&buf) <= 0.8913 + 1e-4,
+            "{}: clipped at {}",
+            preset.id,
+            peak(&buf)
+        );
         assert!(rms(&buf) > 0.001, "{}: effectively silent", preset.id);
 
         let l = channel(&buf, 0);
@@ -386,7 +418,12 @@ fn noise_channels_are_decorrelated() {
 
     let n = l.len() as f64;
     let (ml, mr) = (l.iter().sum::<f64>() / n, r.iter().sum::<f64>() / n);
-    let cov: f64 = l.iter().zip(&r).map(|(a, b)| (a - ml) * (b - mr)).sum::<f64>() / n;
+    let cov: f64 = l
+        .iter()
+        .zip(&r)
+        .map(|(a, b)| (a - ml) * (b - mr))
+        .sum::<f64>()
+        / n;
     let sl = (l.iter().map(|a| (a - ml).powi(2)).sum::<f64>() / n).sqrt();
     let sr_ = (r.iter().map(|b| (b - mr).powi(2)).sum::<f64>() / n).sqrt();
     let corr = cov / (sl * sr_);
@@ -402,7 +439,11 @@ fn noise_channels_are_decorrelated() {
 #[test]
 fn the_beat_is_still_exact_after_four_hours() {
     let (carrier, beat) = (200.0, 7.83);
-    let tail = render_tail(&preset_of(vec![binaural(carrier, beat)]), 4.0 * 3600.0, 10.0);
+    let tail = render_tail(
+        &preset_of(vec![binaural(carrier, beat)]),
+        4.0 * 3600.0,
+        10.0,
+    );
 
     let l = dominant_hz(&channel(&tail, 0));
     let r = dominant_hz(&channel(&tail, 1));
@@ -412,8 +453,14 @@ fn the_beat_is_still_exact_after_four_hours() {
         (measured - beat).abs() < 0.01,
         "after 4h the beat read {measured} Hz instead of {beat} Hz"
     );
-    assert!((l - (carrier - beat / 2.0)).abs() < 0.02, "left drifted to {l}");
-    assert!((r - (carrier + beat / 2.0)).abs() < 0.02, "right drifted to {r}");
+    assert!(
+        (l - (carrier - beat / 2.0)).abs() < 0.02,
+        "left drifted to {l}"
+    );
+    assert!(
+        (r - (carrier + beat / 2.0)).abs() < 0.02,
+        "right drifted to {r}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -454,7 +501,11 @@ fn touching_an_automated_parameter_latches_it() {
         (beat - 6.5).abs() < 0.01,
         "timeline overwrote the manual value: beat is {beat}, expected 6.5"
     );
-    assert_eq!(e.meters().latched_tracks, 0b1, "track was not reported latched");
+    assert_eq!(
+        e.meters().latched_tracks,
+        0b1,
+        "track was not reported latched"
+    );
 }
 
 #[test]
@@ -614,7 +665,10 @@ fn changing_depth_live_does_not_click() {
             prev = s;
         }
     }
-    assert!(max_delta < 0.05, "depth change clicked: step of {max_delta}");
+    assert!(
+        max_delta < 0.05,
+        "depth change clicked: step of {max_delta}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -673,7 +727,10 @@ fn an_edited_curve_takes_effect_at_once() {
     ])));
 
     let beat = beat_after(&mut e, 1.0);
-    assert!((beat - 3.0).abs() < 0.05, "curve did not take effect: {beat}");
+    assert!(
+        (beat - 3.0).abs() < 0.05,
+        "curve did not take effect: {beat}"
+    );
 }
 
 /// Swapping the timeline must not silently keep a latch pointing at a track
@@ -697,7 +754,10 @@ fn swapping_the_timeline_clears_latches() {
 
     let beat = beat_after(&mut e, 1.0);
     assert_eq!(e.meters().latched_tracks, 0, "a latch survived the swap");
-    assert!((beat - 9.0).abs() < 0.05, "new curve is not driving: {beat}");
+    assert!(
+        (beat - 9.0).abs() < 0.05,
+        "new curve is not driving: {beat}"
+    );
 }
 
 /// Removing the timeline entirely leaves a preset that simply holds.
@@ -713,7 +773,11 @@ fn clearing_the_timeline_freezes_the_current_values() {
         (after - held).abs() < 0.05,
         "beat drifted from {held} to {after} with no timeline"
     );
-    assert_eq!(e.meters().duration_s, 0.0, "cleared timeline still reports a length");
+    assert_eq!(
+        e.meters().duration_s,
+        0.0,
+        "cleared timeline still reports a length"
+    );
 }
 
 /// Editing while playing must not glitch the output.
@@ -738,21 +802,30 @@ fn swapping_the_timeline_mid_playback_does_not_click() {
             prev = s;
         }
     }
-    assert!(max_delta < 0.05, "timeline swap clicked: step of {max_delta}");
+    assert!(
+        max_delta < 0.05,
+        "timeline swap clicked: step of {max_delta}"
+    );
 }
 
 #[test]
 fn validate_rejects_a_track_targeting_a_missing_layer() {
     let tl = beat_track(vec![Breakpoint::new(0.0, 5.0, Curve::Linear)]);
     assert!(tl.validate(1).is_ok());
-    assert!(tl.validate(0).is_err(), "accepted a track with no layer behind it");
+    assert!(
+        tl.validate(0).is_err(),
+        "accepted a track with no layer behind it"
+    );
 
     let empty = Timeline {
         tracks: vec![Track::new(ParamTarget::MasterGain, vec![])],
         duration_s: Some(60.0),
         fade_out_s: 0.0,
     };
-    assert!(empty.validate(1).is_err(), "accepted a track with no breakpoints");
+    assert!(
+        empty.validate(1).is_err(),
+        "accepted a track with no breakpoints"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -776,7 +849,12 @@ impl Tone {
     fn new(freq: f64, amp: f32) -> (Self, Arc<AtomicUsize>) {
         let reads = Arc::new(AtomicUsize::new(0));
         (
-            Self { phase: 0.0, freq, amp, reads: Arc::clone(&reads) },
+            Self {
+                phase: 0.0,
+                freq,
+                amp,
+                reads: Arc::clone(&reads),
+            },
             reads,
         )
     }
@@ -810,14 +888,20 @@ fn file_layer() -> LayerConfig {
 #[test]
 fn a_file_layer_with_no_source_is_silent() {
     let buf = render(&preset_of(vec![file_layer()]), 2.0);
-    assert!(buf.iter().all(|s| *s == 0.0), "an unattached file layer made sound");
+    assert!(
+        buf.iter().all(|s| *s == 0.0),
+        "an unattached file layer made sound"
+    );
 }
 
 #[test]
 fn an_attached_source_is_audible_and_read_in_blocks() {
     let mut e = engine_for(&preset_of(vec![file_layer()]));
     let (tone, reads) = Tone::new(440.0, 0.5);
-    e.apply(Command::AttachSource { index: 0, source: Box::new(tone) });
+    e.apply(Command::AttachSource {
+        index: 0,
+        source: Box::new(tone),
+    });
 
     let mut out = vec![0.0f32; BLOCK * 2];
     for _ in 0..20 {
@@ -825,9 +909,15 @@ fn an_attached_source_is_audible_and_read_in_blocks() {
     }
 
     let measured = dominant_hz(&channel(&out, 0));
-    assert!((measured - 440.0).abs() < 5.0, "source came through at {measured} Hz");
+    assert!(
+        (measured - 440.0).abs() < 5.0,
+        "source came through at {measured} Hz"
+    );
     // 20 blocks of 1024 frames pulled in 128-frame chunks.
-    assert!(reads.load(Ordering::Relaxed) >= 100, "source was not read in blocks");
+    assert!(
+        reads.load(Ordering::Relaxed) >= 100,
+        "source was not read in blocks"
+    );
 }
 
 /// Attaching must hand the old source back rather than dropping it in the
@@ -837,12 +927,19 @@ fn replacing_a_source_returns_the_old_one_for_disposal() {
     let mut e = engine_for(&preset_of(vec![file_layer()]));
     let (a, _) = Tone::new(440.0, 0.5);
     assert!(
-        e.apply(Command::AttachSource { index: 0, source: Box::new(a) }).is_none(),
+        e.apply(Command::AttachSource {
+            index: 0,
+            source: Box::new(a)
+        })
+        .is_none(),
         "first attach displaced something"
     );
 
     let (b, _) = Tone::new(220.0, 0.5);
-    let displaced = e.apply(Command::AttachSource { index: 0, source: Box::new(b) });
+    let displaced = e.apply(Command::AttachSource {
+        index: 0,
+        source: Box::new(b),
+    });
     assert!(
         matches!(displaced, Some(Recycled::Source(_))),
         "the replaced source was not handed back"
@@ -863,7 +960,10 @@ fn attaching_a_source_preserves_the_clock() {
     let before = e.meters().position_s;
 
     let (tone, _) = Tone::new(300.0, 0.3);
-    e.apply(Command::AttachSource { index: 1, source: Box::new(tone) });
+    e.apply(Command::AttachSource {
+        index: 1,
+        source: Box::new(tone),
+    });
     e.process(&mut out);
 
     assert!(
@@ -897,7 +997,10 @@ fn a_ducking_layer_pulls_the_bed_down() {
     // Bed plus a loud ducking source.
     let mut e = engine_for(&preset_of(vec![bed, voice]));
     let (tone, _) = Tone::new(300.0, 0.6);
-    e.apply(Command::AttachSource { index: 1, source: Box::new(tone) });
+    e.apply(Command::AttachSource {
+        index: 1,
+        source: Box::new(tone),
+    });
     let mut out = vec![0.0f32; BLOCK * 2];
     // Let the sidechain envelope settle past its 10 ms attack.
     for _ in 0..40 {
@@ -919,12 +1022,18 @@ fn a_ducking_layer_pulls_the_bed_down() {
         .map(|m| m * m)
         .sum();
 
-    let (qmags, qbin) = spectrum(&channel(&render(&preset_of(vec![LayerConfig {
-        kind: LayerKind::Noise,
-        noise_color: NoiseColor::Pink,
-        gain: 0.8,
-        ..Default::default()
-    }]), 3.0), 0));
+    let (qmags, qbin) = spectrum(&channel(
+        &render(
+            &preset_of(vec![LayerConfig {
+                kind: LayerKind::Noise,
+                noise_color: NoiseColor::Pink,
+                gain: 0.8,
+                ..Default::default()
+            }]),
+            3.0,
+        ),
+        0,
+    ));
     let quiet_band: f64 = qmags[(2_000.0 / qbin) as usize..(6_000.0 / qbin) as usize]
         .iter()
         .map(|m| m * m)
@@ -950,7 +1059,11 @@ fn the_bed_returns_after_the_ducking_source_goes_quiet() {
             let frames = out.len() / 2;
             for f in 0..frames {
                 let v = if self.n < self.loud_frames {
-                    if self.n.is_multiple_of(2) { 0.6 } else { -0.6 }
+                    if self.n.is_multiple_of(2) {
+                        0.6
+                    } else {
+                        -0.6
+                    }
                 } else {
                     0.0
                 };
@@ -963,7 +1076,11 @@ fn the_bed_returns_after_the_ducking_source_goes_quiet() {
     }
 
     let mut e = engine_for(&preset_of(vec![
-        LayerConfig { kind: LayerKind::Noise, gain: 0.8, ..Default::default() },
+        LayerConfig {
+            kind: LayerKind::Noise,
+            gain: 0.8,
+            ..Default::default()
+        },
         LayerConfig {
             kind: LayerKind::File,
             gain: 1.0,
@@ -974,7 +1091,10 @@ fn the_bed_returns_after_the_ducking_source_goes_quiet() {
     ]));
     e.apply(Command::AttachSource {
         index: 1,
-        source: Box::new(Burst { n: 0, loud_frames: (SR * 0.5) as usize }),
+        source: Box::new(Burst {
+            n: 0,
+            loud_frames: (SR * 0.5) as usize,
+        }),
     });
 
     let mut out = vec![0.0f32; BLOCK * 2];

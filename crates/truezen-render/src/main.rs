@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use realfft::RealFftPlanner;
 use truezen_engine::engine::{Command, Engine};
-use truezen_engine::preset::Preset;
 use truezen_engine::factory;
+use truezen_engine::preset::Preset;
 use truezen_host::export::{render_to_wav, ExportOptions};
 
 /// Block size for offline rendering. Matches a typical device buffer so the
@@ -17,7 +17,10 @@ use truezen_host::export::{render_to_wav, ExportOptions};
 const BLOCK_FRAMES: usize = 1024;
 
 #[derive(Parser)]
-#[command(name = "truezen-render", about = "Render and analyse TrueZen sessions offline")]
+#[command(
+    name = "truezen-render",
+    about = "Render and analyse TrueZen sessions offline"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -95,12 +98,22 @@ fn main() -> Result<()> {
                 } else {
                     "open-ended".into()
                 };
-                let hp = if p.requires_headphones { "  [headphones]" } else { "" };
+                let hp = if p.requires_headphones {
+                    "  [headphones]"
+                } else {
+                    ""
+                };
                 println!("  {:<24} {:<12} {:>10}{}", p.id, p.goal.label(), dur, hp);
             }
         }
 
-        Cmd::Render { preset, out, seconds, sample_rate, bits } => {
+        Cmd::Render {
+            preset,
+            out,
+            seconds,
+            sample_rate,
+            bits,
+        } => {
             let preset = load(&preset)?;
             let started = std::time::Instant::now();
 
@@ -108,7 +121,11 @@ fn main() -> Result<()> {
             // one cannot drift apart -- and file layers work in both.
             let rendered = render_to_wav(
                 &preset,
-                ExportOptions { sample_rate, bits, seconds },
+                ExportOptions {
+                    sample_rate,
+                    bits,
+                    seconds,
+                },
                 &out,
                 |p| {
                     print!("\r  rendering {:>3.0}%", p * 100.0);
@@ -127,13 +144,22 @@ fn main() -> Result<()> {
             );
         }
 
-        Cmd::Analyze { preset, seconds, sample_rate, skip, peaks } => {
+        Cmd::Analyze {
+            preset,
+            seconds,
+            sample_rate,
+            skip,
+            peaks,
+        } => {
             let preset = load(&preset)?;
             let buf = render(&preset, seconds + skip, sample_rate);
 
             let skip_frames = (skip * sample_rate as f64) as usize;
             let (l, r) = deinterleave(&buf, skip_frames);
-            println!("{}  ({} Hz, {:.0}s analysed)\n", preset.id, sample_rate, seconds);
+            println!(
+                "{}  ({} Hz, {:.0}s analysed)\n",
+                preset.id, sample_rate, seconds
+            );
 
             let lp = top_peaks(&l, sample_rate as f64, peaks);
             let rp = top_peaks(&r, sample_rate as f64, peaks);

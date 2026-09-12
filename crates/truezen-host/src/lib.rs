@@ -27,10 +27,10 @@ use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{Device, SampleFormat, StreamConfig};
 
 use truezen_engine::engine::{Command, Engine, Meters, Recycled, SessionState, TimelineSwap};
-use truezen_engine::preset::Preset;
 use truezen_engine::layer::LayerKind;
-use truezen_engine::timeline::Timeline;
+use truezen_engine::preset::Preset;
 use truezen_engine::timeline::LayerParam;
+use truezen_engine::timeline::Timeline;
 use truezen_engine::Transport;
 
 pub mod decoder;
@@ -104,8 +104,14 @@ enum Request {
     Engine(Command),
     LoadPreset(Box<Preset>),
     UpdateTimeline(Box<Option<Timeline>>),
-    AttachFile { index: usize, path: String, looping: bool },
-    DetachFile { index: usize },
+    AttachFile {
+        index: usize,
+        path: String,
+        looping: bool,
+    },
+    DetachFile {
+        index: usize,
+    },
     SelectDevice(Option<String>),
     /// Raised by the stream error callback.
     DeviceLost(String),
@@ -222,8 +228,17 @@ impl AudioHost {
         self.command(Command::SetMasterGain(gain))
     }
 
-    pub fn set_layer_param(&self, index: usize, param: LayerParam, value: f64) -> Result<(), HostError> {
-        self.command(Command::SetLayerParam { index, param, value })
+    pub fn set_layer_param(
+        &self,
+        index: usize,
+        param: LayerParam,
+        value: f64,
+    ) -> Result<(), HostError> {
+        self.command(Command::SetLayerParam {
+            index,
+            param,
+            value,
+        })
     }
 
     pub fn set_layer_enabled(&self, index: usize, on: bool) -> Result<(), HostError> {
@@ -240,7 +255,11 @@ impl AudioHost {
     /// not in the callback, and the result is reported through
     /// [`AudioHost::status`] if it fails.
     pub fn attach_file(&self, index: usize, path: String, looping: bool) -> Result<(), HostError> {
-        self.send(Request::AttachFile { index, path, looping })
+        self.send(Request::AttachFile {
+            index,
+            path,
+            looping,
+        })
     }
 
     pub fn detach_file(&self, index: usize) -> Result<(), HostError> {
@@ -285,7 +304,11 @@ impl AudioHost {
     }
 
     pub fn status(&self) -> HostStatus {
-        self.shared.status.lock().map(|s| s.clone()).unwrap_or_default()
+        self.shared
+            .status
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -376,97 +399,104 @@ fn run(
         coalesce(&mut batch);
 
         for request in batch.drain(..) {
-        match request {
-            Request::Shutdown => {
-                shutdown = true;
-                continue;
-            }
-
-            Request::Engine(cmd) => {
-                track_transport(&mut desired, &cmd);
-                if let Some(a) = active.as_mut() {
-                    push_command(a, &shared, cmd);
+            match request {
+                Request::Shutdown => {
+                    shutdown = true;
+                    continue;
                 }
-            }
 
-            Request::LoadPreset(preset) => {
-                desired.position_s = 0.0;
-                desired.master_gain = None;
-                desired.preset = Some(*preset);
-                if let Some(a) = active.as_mut() {
-                    let p = desired.preset.as_ref().unwrap();
-                    let state = Box::new(SessionState::from_preset(p, a.sample_rate));
-                    push_command(a, &shared, Command::Replace(state));
-                    // A preset that references audio files must reopen them,
-                    // or its file layers load silent.
-                    attach_files(a, &desired, &shared);
-                }
-            }
-
-            Request::UpdateTimeline(timeline) => {
-                // Build the swap here, off the audio thread, and remember it so
-                // a later device rebuild reconstructs the edited session rather
-                // than the preset as it was shipped.
-                if let Some(p) = desired.preset.as_mut() {
-                    p.timeline = (*timeline).clone();
-                }
-                if let Some(a) = active.as_mut() {
-                    let swap = Box::new(TimelineSwap::new(*timeline));
-                    push_command(a, &shared, Command::ReplaceTimeline(swap));
-                }
-            }
-
-            Request::AttachFile { index, path, looping } => {
-                // Remember it so a device rebuild reopens the same file.
-                if let Some(p) = desired.preset.as_mut() {
-                    if let Some(l) = p.layers.get_mut(index) {
-                        l.file_path = Some(path.clone());
-                        l.loop_file = looping;
+                Request::Engine(cmd) => {
+                    track_transport(&mut desired, &cmd);
+                    if let Some(a) = active.as_mut() {
+                        push_command(a, &shared, cmd);
                     }
                 }
-                if let Some(a) = active.as_mut() {
-                    match StreamedSource::open(&path, a.sample_rate as u32, looping) {
-                        Ok(src) => push_command(
-                            a,
-                            &shared,
-                            Command::AttachSource { index, source: Box::new(src) },
-                        ),
-                        Err(e) => set_status(&shared, |s| s.last_error = Some(e)),
+
+                Request::LoadPreset(preset) => {
+                    desired.position_s = 0.0;
+                    desired.master_gain = None;
+                    desired.preset = Some(*preset);
+                    if let Some(a) = active.as_mut() {
+                        let p = desired.preset.as_ref().unwrap();
+                        let state = Box::new(SessionState::from_preset(p, a.sample_rate));
+                        push_command(a, &shared, Command::Replace(state));
+                        // A preset that references audio files must reopen them,
+                        // or its file layers load silent.
+                        attach_files(a, &desired, &shared);
                     }
                 }
-            }
 
-            Request::DetachFile { index } => {
-                if let Some(p) = desired.preset.as_mut() {
-                    if let Some(l) = p.layers.get_mut(index) {
-                        l.file_path = None;
+                Request::UpdateTimeline(timeline) => {
+                    // Build the swap here, off the audio thread, and remember it so
+                    // a later device rebuild reconstructs the edited session rather
+                    // than the preset as it was shipped.
+                    if let Some(p) = desired.preset.as_mut() {
+                        p.timeline = (*timeline).clone();
+                    }
+                    if let Some(a) = active.as_mut() {
+                        let swap = Box::new(TimelineSwap::new(*timeline));
+                        push_command(a, &shared, Command::ReplaceTimeline(swap));
                     }
                 }
-                if let Some(a) = active.as_mut() {
-                    push_command(a, &shared, Command::DetachSource { index });
+
+                Request::AttachFile {
+                    index,
+                    path,
+                    looping,
+                } => {
+                    // Remember it so a device rebuild reopens the same file.
+                    if let Some(p) = desired.preset.as_mut() {
+                        if let Some(l) = p.layers.get_mut(index) {
+                            l.file_path = Some(path.clone());
+                            l.loop_file = looping;
+                        }
+                    }
+                    if let Some(a) = active.as_mut() {
+                        match StreamedSource::open(&path, a.sample_rate as u32, looping) {
+                            Ok(src) => push_command(
+                                a,
+                                &shared,
+                                Command::AttachSource {
+                                    index,
+                                    source: Box::new(src),
+                                },
+                            ),
+                            Err(e) => set_status(&shared, |s| s.last_error = Some(e)),
+                        }
+                    }
+                }
+
+                Request::DetachFile { index } => {
+                    if let Some(p) = desired.preset.as_mut() {
+                        if let Some(l) = p.layers.get_mut(index) {
+                            l.file_path = None;
+                        }
+                    }
+                    if let Some(a) = active.as_mut() {
+                        push_command(a, &shared, Command::DetachSource { index });
+                    }
+                }
+
+                Request::SelectDevice(name) => {
+                    device_name = name;
+                    remember_position(&shared, &mut desired);
+                    active = rebuild(&mut desired, device_name.as_deref(), &shared, &self_tx);
+                }
+
+                Request::DeviceLost(reason) => {
+                    shared.telemetry.note_error();
+                    set_status(&shared, |s| {
+                        s.running = false;
+                        s.last_error = Some(reason.clone());
+                    });
+                    remember_position(&shared, &mut desired);
+                    // Fall back to the system default and forget the selection:
+                    // the most common cause is headphones being unplugged, and the
+                    // built-in output is what the user now expects to hear.
+                    device_name = None;
+                    active = rebuild(&mut desired, device_name.as_deref(), &shared, &self_tx);
                 }
             }
-
-            Request::SelectDevice(name) => {
-                device_name = name;
-                remember_position(&shared, &mut desired);
-                active = rebuild(&mut desired, device_name.as_deref(), &shared, &self_tx);
-            }
-
-            Request::DeviceLost(reason) => {
-                shared.telemetry.note_error();
-                set_status(&shared, |s| {
-                    s.running = false;
-                    s.last_error = Some(reason.clone());
-                });
-                remember_position(&shared, &mut desired);
-                // Fall back to the system default and forget the selection:
-                // the most common cause is headphones being unplugged, and the
-                // built-in output is what the user now expects to hear.
-                device_name = None;
-                active = rebuild(&mut desired, device_name.as_deref(), &shared, &self_tx);
-            }
-        }
         }
 
         if shutdown {
@@ -588,17 +618,24 @@ fn coalesce(batch: &mut Vec<Request>) {
 
 /// Reopen every file layer the current preset names.
 fn attach_files(active: &mut Active, desired: &Desired, shared: &Shared) {
-    let Some(preset) = desired.preset.as_ref() else { return };
+    let Some(preset) = desired.preset.as_ref() else {
+        return;
+    };
     for (index, cfg) in preset.layers.iter().enumerate() {
         if cfg.kind != LayerKind::File {
             continue;
         }
-        let Some(path) = cfg.file_path.as_ref() else { continue };
+        let Some(path) = cfg.file_path.as_ref() else {
+            continue;
+        };
         match StreamedSource::open(path, active.sample_rate as u32, cfg.loop_file) {
             Ok(src) => push_command(
                 active,
                 shared,
-                Command::AttachSource { index, source: Box::new(src) },
+                Command::AttachSource {
+                    index,
+                    source: Box::new(src),
+                },
             ),
             // A moved or deleted file leaves the layer silent and says so,
             // rather than failing the whole preset.
@@ -719,18 +756,18 @@ fn build_stream(
     self_tx: Sender<Request>,
 ) -> Result<cpal::Stream, HostError> {
     match format {
-        SampleFormat::F32 => {
-            make::<f32>(device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx)
-        }
-        SampleFormat::I16 => {
-            make::<i16>(device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx)
-        }
-        SampleFormat::U16 => {
-            make::<u16>(device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx)
-        }
-        SampleFormat::I32 => {
-            make::<i32>(device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx)
-        }
+        SampleFormat::F32 => make::<f32>(
+            device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx,
+        ),
+        SampleFormat::I16 => make::<i16>(
+            device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx,
+        ),
+        SampleFormat::U16 => make::<u16>(
+            device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx,
+        ),
+        SampleFormat::I32 => make::<i32>(
+            device, config, engine, cmd_rx, recycle_tx, meters, scope, shared, self_tx,
+        ),
         other => Err(HostError::UnsupportedFormat(other)),
     }
 }
@@ -825,7 +862,11 @@ mod tests {
     use super::*;
 
     fn param(index: usize, param: LayerParam, value: f64) -> Request {
-        Request::Engine(Command::SetLayerParam { index, param, value })
+        Request::Engine(Command::SetLayerParam {
+            index,
+            param,
+            value,
+        })
     }
 
     /// Describe a batch compactly so assertions read clearly.
@@ -833,7 +874,11 @@ mod tests {
         batch
             .iter()
             .map(|r| match r {
-                Request::Engine(Command::SetLayerParam { index, param, value }) => {
+                Request::Engine(Command::SetLayerParam {
+                    index,
+                    param,
+                    value,
+                }) => {
                     format!("p{index}:{param:?}={value}")
                 }
                 Request::Engine(Command::SetMasterGain(g)) => format!("master={g}"),
@@ -842,9 +887,9 @@ mod tests {
                 Request::Engine(Command::Seek { seconds }) => format!("seek={seconds}"),
                 Request::Engine(_) => "cmd".into(),
                 Request::LoadPreset(_) => "load".into(),
-            Request::UpdateTimeline(_) => "timeline".into(),
-            Request::AttachFile { .. } => "attach".into(),
-            Request::DetachFile { .. } => "detach".into(),
+                Request::UpdateTimeline(_) => "timeline".into(),
+                Request::AttachFile { .. } => "attach".into(),
+                Request::DetachFile { .. } => "detach".into(),
                 Request::SelectDevice(_) => "device".into(),
                 Request::DeviceLost(_) => "lost".into(),
                 Request::Shutdown => "shutdown".into(),

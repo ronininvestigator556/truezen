@@ -24,7 +24,8 @@ const TEST_GAIN: f64 = 0.005;
 
 fn host_playing(preset_id: &str) -> AudioHost {
     let host = AudioHost::spawn(None).expect("no audio device available");
-    host.load_preset(factory::by_id(preset_id).unwrap()).unwrap();
+    host.load_preset(factory::by_id(preset_id).unwrap())
+        .unwrap();
     host.set_master_gain(TEST_GAIN).unwrap();
     host.play().unwrap();
     host
@@ -61,7 +62,10 @@ fn playback_advances_the_clock_and_reaches_the_device() {
         m.position_s
     );
     assert!(m.playing, "transport did not report playing");
-    assert!(m.peak_l > 0.0 && m.peak_r > 0.0, "no signal reached the output");
+    assert!(
+        m.peak_l > 0.0 && m.peak_r > 0.0,
+        "no signal reached the output"
+    );
     assert!(
         (m.beat_hz - 10.0).abs() < 0.1,
         "expected ~10 Hz alpha, got {}",
@@ -105,7 +109,11 @@ fn seeking_lands_where_the_timeline_says_it_should() {
     sleep(Duration::from_millis(300));
 
     let m = host.meters();
-    assert!(m.position_s >= 1500.0, "seek did not take: {}", m.position_s);
+    assert!(
+        m.position_s >= 1500.0,
+        "seek did not take: {}",
+        m.position_s
+    );
     assert!(
         (m.beat_hz - 4.5).abs() < 0.05,
         "after seeking into the theta hold the beat read {} Hz",
@@ -123,7 +131,13 @@ fn rapid_preset_swaps_keep_playing_and_drop_nothing() {
     host.set_master_gain(TEST_GAIN).unwrap();
     host.play().unwrap();
 
-    for id in ["alpha-settle", "deep-theta", "sleep-onset", "gamma-concentration", "power-nap"] {
+    for id in [
+        "alpha-settle",
+        "deep-theta",
+        "sleep-onset",
+        "gamma-concentration",
+        "power-nap",
+    ] {
         host.load_preset(factory::by_id(id).unwrap()).unwrap();
         sleep(Duration::from_millis(250));
         assert!(host.meters().peak_l > 0.0, "{id} produced silence");
@@ -145,12 +159,17 @@ fn a_burst_of_live_parameter_changes_is_not_dropped() {
 
     for i in 0..3_000 {
         let carrier = 120.0 + (i % 200) as f64;
-        host.set_layer_param(0, LayerParam::Carrier, carrier).unwrap();
+        host.set_layer_param(0, LayerParam::Carrier, carrier)
+            .unwrap();
     }
     sleep(Duration::from_millis(400));
 
     let s = host.stats();
-    assert_eq!(s.dropped_commands, 0, "dropped {} commands", s.dropped_commands);
+    assert_eq!(
+        s.dropped_commands, 0,
+        "dropped {} commands",
+        s.dropped_commands
+    );
     assert_eq!(s.overloads, 0, "callback overran while dialing");
 
     let m = host.meters();

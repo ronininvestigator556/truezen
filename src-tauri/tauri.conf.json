@@ -33,6 +33,24 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Alex Allen",
+    "copyright": "Copyright (c) 2026 Alex Allen",
+    "category": "Music",
+    "shortDescription": "Brainwave entrainment studio",
+    "longDescription": "Generates binaural beats, isochronic tones, monaural beats and multi-layer stacks for meditation, focus and sleep. Dial in an exact carrier and beat frequency, or start from a preset.",
+    "licenseFile": "../LICENSE",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libasound2",
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ]
+      }
+    }
   }
 }

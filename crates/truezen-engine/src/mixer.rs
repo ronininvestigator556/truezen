@@ -103,7 +103,10 @@ mod tests {
     fn limiter_never_exceeds_ceiling() {
         let lim = Limiter::new(-1.0);
         for x in [-100.0, -2.0, -1.0, 0.0, 1.0, 2.0, 100.0f64] {
-            assert!(lim.process(x).abs() <= lim.ceiling() + 1e-12, "escaped at {x}");
+            assert!(
+                lim.process(x).abs() <= lim.ceiling() + 1e-12,
+                "escaped at {x}"
+            );
         }
     }
 
