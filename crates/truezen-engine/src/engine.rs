@@ -39,6 +39,12 @@ pub struct SessionState {
     pub layers: Vec<Layer>,
     pub timeline: Option<Timeline>,
     pub master_gain: f64,
+    /// One flag per timeline track. A latched track stops being evaluated, so
+    /// the value the user dialed in survives instead of being overwritten on
+    /// the next automation block.
+    ///
+    /// Sized once when the session is built, so latching never allocates.
+    pub track_latched: Vec<bool>,
 }
 
 impl SessionState {
@@ -47,6 +53,7 @@ impl SessionState {
             layers: Vec::new(),
             timeline: None,
             master_gain: 0.7,
+            track_latched: Vec::new(),
         }
     }
 
@@ -58,17 +65,20 @@ impl SessionState {
             .enumerate()
             .map(|(i, cfg)| Layer::new(cfg.clone(), sample_rate, 0x51ED_0000 ^ i as u64))
             .collect();
+        let track_count = preset.timeline.as_ref().map_or(0, |t| t.tracks.len());
         Self {
             layers,
             timeline: preset.timeline.clone(),
             master_gain: preset.master_gain,
+            track_latched: vec![false; track_count],
         }
     }
 }
 
 /// A snapshot for the UI. `Copy` and scalar-only, so it can go through a
 /// triple buffer without allocation.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Meters {
     pub peak_l: f32,
     pub peak_r: f32,
@@ -82,6 +92,10 @@ pub struct Meters {
     /// so the UI shows what is actually sounding rather than the target.
     pub beat_hz: f32,
     pub carrier_hz: f32,
+    /// Bit `n` set means timeline track `n` is latched and no longer driving
+    /// its parameter. Tracks beyond 32 are not represented; presets do not
+    /// come close to that many.
+    pub latched_tracks: u32,
 }
 
 /// Real-time-safe control messages.
@@ -93,6 +107,10 @@ pub enum Command {
     SetMasterGain(f64),
     SetLayerEnabled { index: usize, on: bool },
     SetLayerParam { index: usize, param: LayerParam, value: f64 },
+    /// Hand a parameter back to its automation track.
+    SetTrackLatched { track: usize, latched: bool },
+    /// Restore every automated parameter to timeline control.
+    UnlatchAll,
     /// Swap in a whole new layer stack. The displaced state is returned for
     /// the caller to drop on its own thread.
     Replace(Box<SessionState>),
@@ -192,6 +210,7 @@ impl Engine {
                 let g = g.clamp(0.0, 1.0);
                 self.state.master_gain = g;
                 self.master.set_target(g);
+                self.latch_matching(ParamTarget::MasterGain);
             }
             Command::SetLayerEnabled { index, on } => {
                 if let Some(l) = self.state.layers.get_mut(index) {
@@ -202,6 +221,25 @@ impl Engine {
                 if let Some(l) = self.state.layers.get_mut(index) {
                     apply_layer_param(l, param, value);
                 }
+                // Touch latches. A hand on the control beats the timeline
+                // until the user explicitly gives the parameter back --
+                // otherwise the next automation block, 1.3 ms later, silently
+                // undoes the edit.
+                self.latch_matching(ParamTarget::Layer { index, param });
+            }
+            Command::SetTrackLatched { track, latched } => {
+                if let Some(f) = self.state.track_latched.get_mut(track) {
+                    *f = latched;
+                }
+                // Releasing a latch should take effect at once rather than at
+                // the end of the current automation block.
+                if !latched {
+                    self.tick_automation();
+                }
+            }
+            Command::UnlatchAll => {
+                self.state.track_latched.iter_mut().for_each(|f| *f = false);
+                self.tick_automation();
             }
             Command::Replace(new_state) => {
                 self.master.set_target(new_state.master_gain);
@@ -220,9 +258,12 @@ impl Engine {
     /// without gliding.
     fn snap_automation(&mut self) {
         let t = self.position_s();
-        let SessionState { layers, timeline, .. } = &mut *self.state;
+        let SessionState { layers, timeline, track_latched, .. } = &mut *self.state;
         let Some(tl) = timeline.as_ref() else { return };
-        for track in &tl.tracks {
+        for (i, track) in tl.tracks.iter().enumerate() {
+            if track_latched.get(i).copied().unwrap_or(false) {
+                continue;
+            }
             let Some(v) = track.value_at(t) else { continue };
             match track.target {
                 ParamTarget::MasterGain => {
@@ -239,17 +280,42 @@ impl Engine {
         self.fade = tl.fade_gain_at(t);
     }
 
+    /// Latch every track driving `target`, so the user's value sticks.
+    fn latch_matching(&mut self, target: ParamTarget) {
+        let SessionState { timeline, track_latched, .. } = &mut *self.state;
+        let Some(tl) = timeline.as_ref() else { return };
+        for (i, track) in tl.tracks.iter().enumerate() {
+            if track.target == target {
+                if let Some(f) = track_latched.get_mut(i) {
+                    *f = true;
+                }
+            }
+        }
+    }
+
+    fn latched_bitmask(&self) -> u32 {
+        self.state
+            .track_latched
+            .iter()
+            .take(32)
+            .enumerate()
+            .fold(0u32, |acc, (i, on)| if *on { acc | (1 << i) } else { acc })
+    }
+
     /// Re-evaluate automation for the block starting at the current position.
     fn tick_automation(&mut self) {
         let t = self.pos as f64 / self.sample_rate;
         // Split the borrow so the timeline can be read while layers are
         // written.
-        let SessionState { layers, timeline, .. } = &mut *self.state;
+        let SessionState { layers, timeline, track_latched, .. } = &mut *self.state;
         let Some(tl) = timeline.as_ref() else {
             self.fade = 1.0;
             return;
         };
-        for track in &tl.tracks {
+        for (i, track) in tl.tracks.iter().enumerate() {
+            if track_latched.get(i).copied().unwrap_or(false) {
+                continue;
+            }
             let Some(v) = track.value_at(t) else { continue };
             match track.target {
                 ParamTarget::MasterGain => self.master.set_target(v.clamp(0.0, 1.0)),
@@ -352,6 +418,7 @@ impl Engine {
             finished: self.finished,
             beat_hz: beat as f32,
             carrier_hz: carrier as f32,
+            latched_tracks: self.latched_bitmask(),
         };
     }
 }
@@ -366,6 +433,9 @@ fn apply_layer_param(layer: &mut Layer, param: LayerParam, value: f64) {
             let q = layer.config.filter_q;
             layer.set_filter(value, q);
         }
+        LayerParam::Duty => layer.set_duty(value),
+        LayerParam::RampMs => layer.set_ramp_ms(value),
+        LayerParam::Depth => layer.set_depth(value),
     }
 }
 

@@ -415,3 +415,204 @@ fn the_beat_is_still_exact_after_four_hours() {
     assert!((l - (carrier - beat / 2.0)).abs() < 0.02, "left drifted to {l}");
     assert!((r - (carrier + beat / 2.0)).abs() < 0.02, "right drifted to {r}");
 }
+
+// ---------------------------------------------------------------------------
+// Latch-on-touch
+// ---------------------------------------------------------------------------
+
+/// Beat of the first layer, after `seconds` of playback.
+fn beat_after(engine: &mut Engine, seconds: f64) -> f64 {
+    let frames = (seconds * SR) as usize;
+    let mut out = vec![0.0f32; BLOCK * 2];
+    let mut done = 0;
+    while done < frames {
+        engine.process(&mut out);
+        done += BLOCK;
+    }
+    engine.meters().beat_hz as f64
+}
+
+/// Without latching, a manual edit to an automated parameter is undone by the
+/// next automation block 1.3 ms later. `deep-theta` ramps its beat from 10 Hz
+/// down, so the timeline is actively writing the whole time.
+#[test]
+fn touching_an_automated_parameter_latches_it() {
+    let preset = factory::by_id("deep-theta").unwrap();
+    let mut e = engine_for(&preset);
+
+    beat_after(&mut e, 2.0);
+    e.apply(Command::SetLayerParam {
+        index: 0,
+        param: LayerParam::Beat,
+        value: 6.5,
+    });
+
+    // Long enough that the timeline would have reasserted itself many
+    // thousands of times.
+    let beat = beat_after(&mut e, 5.0);
+    assert!(
+        (beat - 6.5).abs() < 0.01,
+        "timeline overwrote the manual value: beat is {beat}, expected 6.5"
+    );
+    assert_eq!(e.meters().latched_tracks, 0b1, "track was not reported latched");
+}
+
+#[test]
+fn releasing_a_latch_returns_the_parameter_to_the_timeline() {
+    let preset = factory::by_id("deep-theta").unwrap();
+    let mut e = engine_for(&preset);
+
+    beat_after(&mut e, 2.0);
+    e.apply(Command::SetLayerParam {
+        index: 0,
+        param: LayerParam::Beat,
+        value: 6.5,
+    });
+    assert!((beat_after(&mut e, 2.0) - 6.5).abs() < 0.01);
+
+    e.apply(Command::UnlatchAll);
+    let beat = beat_after(&mut e, 2.0);
+
+    // Back under timeline control, which near the start of deep-theta is
+    // close to 10 Hz.
+    assert!(beat > 9.0, "beat did not return to the timeline: {beat}");
+    assert_eq!(e.meters().latched_tracks, 0);
+}
+
+/// Latching must be per-track: dialing one parameter cannot silently freeze
+/// another layer's automation.
+#[test]
+fn latching_one_parameter_leaves_the_others_automated() {
+    let preset = factory::by_id("morning-activation").unwrap();
+    // Tracks: 0 = layer0 beat, 1 = layer1 beat, 2 = layer1 gain.
+    let mut e = engine_for(&preset);
+
+    beat_after(&mut e, 1.0);
+    e.apply(Command::SetLayerParam {
+        index: 0,
+        param: LayerParam::Beat,
+        value: 15.0,
+    });
+    beat_after(&mut e, 2.0);
+
+    assert_eq!(e.meters().latched_tracks, 0b001, "wrong tracks latched");
+
+    // Layer 1's gain track is untouched, so it must still be climbing from 0.
+    let gain = e.state().layers[1].config.gain;
+    assert!(gain > 0.0, "an unlatched gain track stopped advancing");
+}
+
+/// A parameter with no automation track can still be set; there is simply
+/// nothing to latch.
+#[test]
+fn setting_an_unautomated_parameter_latches_nothing() {
+    let preset = factory::by_id("schumann-ground").unwrap();
+    let mut e = engine_for(&preset);
+    e.apply(Command::SetLayerParam {
+        index: 0,
+        param: LayerParam::Carrier,
+        value: 180.0,
+    });
+    // Ten time constants of the 150 ms frequency smoother, so the glide has
+    // demonstrably finished rather than merely got close.
+    beat_after(&mut e, 1.5);
+    assert_eq!(e.meters().latched_tracks, 0);
+    assert!((e.meters().carrier_hz as f64 - 180.0).abs() < 0.1);
+}
+
+/// Loading a new preset must start from a clean slate; a latch carried over
+/// from the previous session would silently disable automation.
+#[test]
+fn loading_a_preset_clears_every_latch() {
+    let mut e = engine_for(&factory::by_id("deep-theta").unwrap());
+    e.apply(Command::SetLayerParam {
+        index: 0,
+        param: LayerParam::Beat,
+        value: 6.5,
+    });
+    beat_after(&mut e, 1.0);
+    assert_ne!(e.meters().latched_tracks, 0);
+
+    e.load_preset(&factory::by_id("deep-theta").unwrap());
+    e.apply(Command::Play);
+    let beat = beat_after(&mut e, 1.0);
+    assert_eq!(e.meters().latched_tracks, 0, "latch survived a preset load");
+    assert!(beat > 9.0, "automation did not resume: {beat}");
+}
+
+/// Gate timing changes must land on a cycle boundary. Shrinking the duty while
+/// the gate is open would otherwise cut the tone off mid-pulse, which clicks.
+#[test]
+fn changing_duty_live_does_not_click() {
+    let mut e = engine_for(&preset_of(vec![LayerConfig {
+        kind: LayerKind::Isochronic,
+        carrier_hz: 200.0,
+        beat_hz: 6.0,
+        gain: 0.8,
+        ramp_ms: 8.0,
+        ..Default::default()
+    }]));
+
+    let mut out = vec![0.0f32; BLOCK * 2];
+    // Settle the startup ramp first.
+    for _ in 0..40 {
+        e.process(&mut out);
+    }
+
+    let mut prev = out[out.len() - 2];
+    let mut max_delta = 0.0f64;
+    for step in 0..300 {
+        // Sweep the duty across its whole useful range, far faster than a drag.
+        let duty = 0.15 + 0.7 * ((step as f64 * 0.05).sin() * 0.5 + 0.5);
+        e.apply(Command::SetLayerParam {
+            index: 0,
+            param: LayerParam::Duty,
+            value: duty,
+        });
+        e.process(&mut out);
+        for &s in out.iter().step_by(2) {
+            max_delta = max_delta.max((s - prev).abs() as f64);
+            prev = s;
+        }
+    }
+
+    // A 200 Hz carrier steps by at most ~0.02 per sample; a mid-pulse cut
+    // would show a step near the full amplitude.
+    assert!(max_delta < 0.05, "duty change clicked: step of {max_delta}");
+}
+
+/// Depth is a straight amplitude multiplier, so it is smoothed rather than
+/// held to cycle boundaries.
+#[test]
+fn changing_depth_live_does_not_click() {
+    let mut e = engine_for(&preset_of(vec![LayerConfig {
+        kind: LayerKind::Isochronic,
+        carrier_hz: 200.0,
+        beat_hz: 6.0,
+        gain: 0.8,
+        ..Default::default()
+    }]));
+
+    let mut out = vec![0.0f32; BLOCK * 2];
+    for _ in 0..40 {
+        e.process(&mut out);
+    }
+
+    let mut prev = out[out.len() - 2];
+    let mut max_delta = 0.0f64;
+    for step in 0..200 {
+        // Alternate between the extremes every block: the harshest case.
+        let depth = if step % 2 == 0 { 0.0 } else { 1.0 };
+        e.apply(Command::SetLayerParam {
+            index: 0,
+            param: LayerParam::Depth,
+            value: depth,
+        });
+        e.process(&mut out);
+        for &s in out.iter().step_by(2) {
+            max_delta = max_delta.max((s - prev).abs() as f64);
+            prev = s;
+        }
+    }
+    assert!(max_delta < 0.05, "depth change clicked: step of {max_delta}");
+}

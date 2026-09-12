@@ -101,7 +101,8 @@ pub struct Telemetry {
     max_load: AtomicU32,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Stats {
     pub callbacks: u64,
     pub overloads: u64,

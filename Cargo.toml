@@ -4,6 +4,7 @@ members = [
     "crates/truezen-engine",
     "crates/truezen-host",
     "crates/truezen-render",
+    "src-tauri",
 ]
 
 [workspace.package]

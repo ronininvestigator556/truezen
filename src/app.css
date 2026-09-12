@@ -1,0 +1,65 @@
+:root {
+  --bg: #0a0e14;
+  --panel: #111722;
+  --sunken: #0c1119;
+  --sunken-hi: #141b27;
+  --line: #1e2634;
+  --line-hi: #2c3648;
+
+  --fg: #e4e9f2;
+  --fg-dim: #b7c0cf;
+  --muted: #7b8698;
+
+  --accent: #5eead4;
+  --accent-dim: #2b6f66;
+  --accent-bg: #12312e;
+
+  --violet: #a78bfa;
+  --violet-bg: #241f3d;
+
+  --warn: #fbbf24;
+  --warn-dim: #5c4514;
+  --danger: #f87171;
+
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* The window chrome is the app's frame; nothing here should be selectable
+   text unless it is genuinely content. */
+button,
+input[type="range"] {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--line-hi);
+}

@@ -10,7 +10,8 @@ use crate::HostError;
 /// ruinous. A large buffer is therefore free insurance.
 pub const PREFERRED_FRAMES: u32 = 1024;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
     /// Stable across reboots and reconnections, so this is what gets saved in
     /// settings. Display names are not unique -- two identical USB interfaces

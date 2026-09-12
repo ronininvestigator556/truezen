@@ -46,6 +46,12 @@ pub enum LayerParam {
     Gain,
     Pan,
     FilterCutoff,
+    /// Isochronic gate shape. Applied at cycle boundaries, not immediately --
+    /// shrinking the duty past the current position would otherwise slam the
+    /// gate shut mid-pulse and click.
+    Duty,
+    RampMs,
+    Depth,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -4,3 +4,4 @@ dist/
 *.wav
 *.flac
 .DS_Store
+src-tauri/gen/

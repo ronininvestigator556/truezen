@@ -80,7 +80,8 @@ impl From<cpal::Error> for HostError {
 
 /// What the host is currently doing. Surfaced in the UI so a silent app is
 /// never a mystery.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HostStatus {
     pub device_name: Option<String>,
     pub sample_rate: u32,
@@ -217,6 +218,18 @@ impl AudioHost {
 
     pub fn set_layer_enabled(&self, index: usize, on: bool) -> Result<(), HostError> {
         self.command(Command::SetLayerEnabled { index, on })
+    }
+
+    /// Hand an automated parameter back to its timeline track.
+    ///
+    /// Dialing a parameter latches it automatically; this is the way back.
+    pub fn set_track_latched(&self, track: usize, latched: bool) -> Result<(), HostError> {
+        self.command(Command::SetTrackLatched { track, latched })
+    }
+
+    /// Return every latched parameter to timeline control.
+    pub fn unlatch_all(&self) -> Result<(), HostError> {
+        self.command(Command::UnlatchAll)
     }
 
     /// Switch output device, resuming at the current session position.

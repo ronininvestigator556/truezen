@@ -166,6 +166,14 @@ pub struct Layer {
     beat: Smoother,
     gain: Smoother,
     pan: Smoother,
+    /// Depth is a plain amplitude multiplier, so unlike the timing parameters
+    /// it must glide or a change steps the output.
+    depth: Smoother,
+
+    /// Gate shape held for the duration of the current envelope cycle.
+    cycle_duty: f64,
+    cycle_ramp_ms: f64,
+    last_env_phase: f64,
 
     // Two phasors serve the two carriers of a binaural or monaural pair, and
     // `osc_a` alone serves isochronic.
@@ -196,6 +204,8 @@ impl Layer {
         // Start silent and glide up, so adding a layer mid-session fades in.
         gain.set_target(if config.enabled { config.gain } else { 0.0 });
         let pan = Smoother::new(config.pan, TAU_GAIN, sample_rate);
+        let depth = Smoother::new(config.depth, TAU_GAIN, sample_rate);
+        let (cycle_duty, cycle_ramp_ms) = (config.duty, config.ramp_ms);
 
         let mut layer = Self {
             config,
@@ -204,6 +214,10 @@ impl Layer {
             beat,
             gain,
             pan,
+            depth,
+            cycle_duty,
+            cycle_ramp_ms,
+            last_env_phase: 0.0,
             osc_a: Phasor::new(),
             osc_b: Phasor::new(),
             env: Phasor::new(),
@@ -260,6 +274,23 @@ impl Layer {
         self.gain.set_target(if on { self.config.gain } else { 0.0 });
     }
 
+    /// Fraction of each cycle the gate is open. Takes effect at the start of
+    /// the next cycle.
+    pub fn set_duty(&mut self, duty: f64) {
+        self.config.duty = duty.clamp(0.01, 1.0);
+    }
+
+    /// Gate attack/release in milliseconds. Takes effect at the next cycle.
+    pub fn set_ramp_ms(&mut self, ms: f64) {
+        self.config.ramp_ms = ms.max(0.0);
+    }
+
+    pub fn set_depth(&mut self, depth: f64) {
+        let d = depth.clamp(0.0, 1.0);
+        self.config.depth = d;
+        self.depth.set_target(d);
+    }
+
     pub fn set_filter(&mut self, cutoff_hz: f64, q: f64) {
         self.config.filter_cutoff_hz = cutoff_hz;
         self.config.filter_q = q;
@@ -285,6 +316,7 @@ impl Layer {
         self.beat.reset_to(self.beat.target());
         self.gain.reset_to(self.gain.target());
         self.pan.reset_to(self.pan.target());
+        self.depth.reset_to(self.depth.target());
     }
 
     /// True once a disabled layer has finished fading out, meaning it can be
@@ -297,6 +329,8 @@ impl Layer {
     /// The isochronic gate value for the current envelope phase.
     #[inline]
     fn envelope(&mut self, beat_hz: f64) -> f64 {
+        let depth = self.depth.tick().clamp(0.0, 1.0);
+
         // Below this the gate period exceeds a couple of minutes; treat it as
         // a continuous tone rather than letting the ramp maths degenerate.
         if beat_hz < 0.01 {
@@ -305,8 +339,16 @@ impl Layer {
         self.env.set_freq(beat_hz, self.sample_rate);
         let p = self.env.tick();
 
-        let duty = self.config.duty.clamp(0.01, 1.0);
-        let depth = self.config.depth.clamp(0.0, 1.0);
+        // Adopt new gate timing only at a cycle boundary. Applying a shorter
+        // duty immediately could put the phase past the closing edge and cut
+        // the tone off mid-pulse, which clicks.
+        if p < self.last_env_phase {
+            self.cycle_duty = self.config.duty.clamp(0.01, 1.0);
+            self.cycle_ramp_ms = self.config.ramp_ms.max(0.0);
+        }
+        self.last_env_phase = p;
+
+        let duty = self.cycle_duty;
 
         let gate = if p >= duty {
             0.0
@@ -315,7 +357,7 @@ impl Layer {
             let pos = p / duty;
             // Convert the ramp from milliseconds to a fraction of that window.
             // Both ramps must fit, hence the 0.5 clamp.
-            let ramp = ((self.config.ramp_ms / 1000.0) * beat_hz / duty).clamp(1e-4, 0.5);
+            let ramp = ((self.cycle_ramp_ms / 1000.0) * beat_hz / duty).clamp(1e-4, 0.5);
             if pos < ramp {
                 0.5 - 0.5 * (PI * pos / ramp).cos()
             } else if pos > 1.0 - ramp {

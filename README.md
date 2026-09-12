@@ -14,7 +14,7 @@ most sessions from one click on a preset.
 | 0 | Workspace scaffold | done |
 | 1 | DSP engine, preset library, offline render | done |
 | 2 | Real-time audio host | done |
-| 3 | Tauri bridge + Lab view | in progress |
+| 3 | Tauri bridge + Lab view | done |
 | 4 | Timeline editor + Play view | |
 | 5 | Preset import/export | |
 | 6 | File layers + WAV export | |
@@ -27,6 +27,8 @@ most sessions from one click on a preset.
 crates/truezen-engine   pure DSP — no audio device, no UI, no filesystem
 crates/truezen-host     cpal stream, lock-free control, telemetry
 crates/truezen-render   offline renderer and spectral analyser
+src-tauri               Tauri bridge — owns the host, forwards commands
+src                     Svelte 5 frontend: preset browser, Lab view, visualiser
 ```
 
 `truezen-engine`'s entire output interface is `process(&mut [f32])`. That is
@@ -51,10 +53,26 @@ Live audio soak test, on real hardware:
 cargo run --release -p truezen-host --example soak -- --seconds 60 --sweep
 ```
 
+## Run the app
+
+```sh
+npm install
+npm run tauri dev
+```
+
+Every numeric control is drag-to-scrub and click-to-type: Shift for fine steps,
+Alt for coarse, arrow keys to nudge. Frequency fields also accept names, so
+typing `schumann` gives you 7.83 Hz.
+
+Presets are timelines, not static settings, so most of them are actively
+driving their own parameters. Touching an automated control **latches** it: your
+value sticks and that timeline track stops running, marked `manual` on the
+field. "Restore automation" in the transport hands everything back.
+
 ## Tests
 
 ```sh
-cargo test --release                          # 55 tests, no hardware needed
+cargo test --release                          # 62 tests, no hardware needed
 cargo test --release -p truezen-host -- --ignored   # 8 tests, needs an audio device
 ```
 

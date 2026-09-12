@@ -11,6 +11,7 @@ cpal = "0.18"
 rtrb = "0.4"
 triple_buffer = "9"
 thiserror = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 clap = { version = "4", features = ["derive"] }
