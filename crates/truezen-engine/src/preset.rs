@@ -124,7 +124,10 @@ impl Preset {
             return Err("preset has no layers".into());
         }
         if !self.master_gain.is_finite() || !(0.0..=1.0).contains(&self.master_gain) {
-            return Err(format!("master_gain {} out of range 0..1", self.master_gain));
+            return Err(format!(
+                "master_gain {} out of range 0..1",
+                self.master_gain
+            ));
         }
         for (i, l) in self.layers.iter().enumerate() {
             let where_ = format!("layer {i} ({})", l.name);

@@ -31,7 +31,8 @@ struct Reader {
 
 impl Reader {
     fn open(path: &Path) -> Result<Self, String> {
-        let file = File::open(path).map_err(|e| format!("could not open {}: {e}", path.display()))?;
+        let file =
+            File::open(path).map_err(|e| format!("could not open {}: {e}", path.display()))?;
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
         // The extension is only a hint; symphonia still probes the content, so
@@ -42,7 +43,12 @@ impl Reader {
         }
 
         let format = symphonia::default::get_probe()
-            .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+            .probe(
+                &hint,
+                mss,
+                FormatOptions::default(),
+                MetadataOptions::default(),
+            )
             .map_err(|e| format!("unsupported or corrupt audio file: {e}"))?;
 
         let track = format
@@ -59,7 +65,11 @@ impl Reader {
             .make_audio_decoder(params, &AudioDecoderOptions::default())
             .map_err(|e| format!("no decoder for this audio: {e}"))?;
 
-        Ok(Self { format, decoder, track_id })
+        Ok(Self {
+            format,
+            decoder,
+            track_id,
+        })
     }
 }
 
@@ -137,7 +147,9 @@ impl FileDecoder {
 
     /// Decode one packet into `ready`. Returns false at end of stream.
     fn decode_packet(&mut self) -> bool {
-        let Some(reader) = self.reader.as_mut() else { return false };
+        let Some(reader) = self.reader.as_mut() else {
+            return false;
+        };
 
         let packet = loop {
             match reader.format.next_packet() {
@@ -213,8 +225,10 @@ impl FileDecoder {
             let start = self.tail.len() - xf * CH;
             for f in 0..xf {
                 let t = f as f32 / xf as f32;
-                let (fade_out, fade_in) =
-                    ((1.0 - t) * std::f32::consts::FRAC_PI_2, t * std::f32::consts::FRAC_PI_2);
+                let (fade_out, fade_in) = (
+                    (1.0 - t) * std::f32::consts::FRAC_PI_2,
+                    t * std::f32::consts::FRAC_PI_2,
+                );
                 for c in 0..CH {
                     let a = self.tail[start + f * CH + c] * fade_out.sin();
                     let b = self.head[f * CH + c] * fade_in.sin();

@@ -132,7 +132,9 @@ impl Resampler {
             out.append(&mut self.buf);
             return;
         }
-        let Some(kernel) = self.kernel.as_ref() else { return };
+        let Some(kernel) = self.kernel.as_ref() else {
+            return;
+        };
 
         let frames = self.buf.len() / CH;
         while self.pos_int + HALF_TAPS + 1 < frames {
@@ -169,7 +171,8 @@ impl Resampler {
             out.append(&mut self.buf);
             return;
         }
-        self.buf.extend(std::iter::repeat_n(0.0, (HALF_TAPS + 2) * CH));
+        self.buf
+            .extend(std::iter::repeat_n(0.0, (HALF_TAPS + 2) * CH));
         self.pull(out);
         self.buf.clear();
     }
@@ -205,8 +208,8 @@ mod tests {
         let mut wsum = 0.0;
         for (i, s) in input.iter_mut().enumerate() {
             let u = std::f64::consts::TAU * i as f64 / n as f64;
-            let w = 0.35875 - 0.48829 * u.cos() + 0.14128 * (2.0 * u).cos()
-                - 0.01168 * (3.0 * u).cos();
+            let w =
+                0.35875 - 0.48829 * u.cos() + 0.14128 * (2.0 * u).cos() - 0.01168 * (3.0 * u).cos();
             wsum += w;
             *s = mono[i] * w;
         }
@@ -274,7 +277,10 @@ mod tests {
         let frames = out.len() / 2;
         let expected = 10.0 * 48_000.0;
         let error = (frames as f64 - expected).abs() / expected;
-        assert!(error < 0.001, "produced {frames} frames, expected about {expected}");
+        assert!(
+            error < 0.001,
+            "produced {frames} frames, expected about {expected}"
+        );
     }
 
     /// Downsampling must not fold high content back into the audible band.

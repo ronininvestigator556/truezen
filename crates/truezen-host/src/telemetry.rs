@@ -121,7 +121,11 @@ impl Telemetry {
     /// standard practice for audio load metering.
     pub fn record(&self, elapsed_s: f64, frames: usize, sample_rate: f64) {
         let budget = frames as f64 / sample_rate;
-        let load = if budget > 0.0 { elapsed_s / budget } else { 0.0 };
+        let load = if budget > 0.0 {
+            elapsed_s / budget
+        } else {
+            0.0
+        };
         let permille = (load * 1000.0).clamp(0.0, 100_000.0) as u32;
 
         self.callbacks.fetch_add(1, Ordering::Relaxed);
@@ -178,7 +182,10 @@ mod tests {
                 s.wave[i]
             );
         }
-        assert_eq!(*s.wave.last().unwrap(), (WAVE_POINTS + WAVE_POINTS / 2 - 1) as f32);
+        assert_eq!(
+            *s.wave.last().unwrap(),
+            (WAVE_POINTS + WAVE_POINTS / 2 - 1) as f32
+        );
     }
 
     #[test]
@@ -201,7 +208,11 @@ mod tests {
         // 1024 frames at 48 kHz is a 21.3 ms budget; 10.6 ms is half of it.
         t.record(0.01066, 1024, 48_000.0);
         let s = t.snapshot();
-        assert!((s.last_load_permille as i64 - 500).abs() < 20, "got {}", s.last_load_permille);
+        assert!(
+            (s.last_load_permille as i64 - 500).abs() < 20,
+            "got {}",
+            s.last_load_permille
+        );
         assert_eq!(s.overloads, 0);
 
         t.record(0.020, 1024, 48_000.0);

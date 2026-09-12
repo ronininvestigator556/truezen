@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::noise::{FilterMode, NoiseColor, NoiseGen, Svf};
 use crate::osc::{Phasor, Waveform};
-use crate::source::{SampleSource, Voice};
 use crate::smooth::Smoother;
+use crate::source::{SampleSource, Voice};
 
 /// How a layer produces its beat.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -272,10 +272,16 @@ impl Layer {
     }
 
     fn refresh_filter(&mut self) {
-        self.svf_l
-            .set(self.config.filter_cutoff_hz, self.config.filter_q, self.sample_rate);
-        self.svf_r
-            .set(self.config.filter_cutoff_hz, self.config.filter_q, self.sample_rate);
+        self.svf_l.set(
+            self.config.filter_cutoff_hz,
+            self.config.filter_q,
+            self.sample_rate,
+        );
+        self.svf_r.set(
+            self.config.filter_cutoff_hz,
+            self.config.filter_q,
+            self.sample_rate,
+        );
     }
 
     pub fn set_carrier(&mut self, hz: f64) {
@@ -303,7 +309,8 @@ impl Layer {
     pub fn set_enabled(&mut self, on: bool) {
         self.config.enabled = on;
         // Glide rather than cut, so toggling a layer never clicks.
-        self.gain.set_target(if on { self.config.gain } else { 0.0 });
+        self.gain
+            .set_target(if on { self.config.gain } else { 0.0 });
     }
 
     /// Fraction of each cycle the gate is open. Takes effect at the start of
@@ -325,7 +332,10 @@ impl Layer {
 
     /// Give this layer a source of audio. Returns whatever was attached
     /// before, so the caller can drop it off the audio thread.
-    pub fn attach_source(&mut self, source: Box<dyn SampleSource>) -> Option<Box<dyn SampleSource>> {
+    pub fn attach_source(
+        &mut self,
+        source: Box<dyn SampleSource>,
+    ) -> Option<Box<dyn SampleSource>> {
         let previous = self.voice.take();
         self.voice = Some(Voice::new(source));
         previous.map(Voice::into_source)
@@ -517,7 +527,10 @@ mod tests {
     fn equal_power_holds_constant_energy() {
         for pan in [-1.0, -0.5, 0.0, 0.5, 1.0] {
             let (l, r) = equal_power(pan);
-            assert!((l * l + r * r - 1.0).abs() < 1e-12, "pan {pan} not equal power");
+            assert!(
+                (l * l + r * r - 1.0).abs() < 1e-12,
+                "pan {pan} not equal power"
+            );
         }
     }
 
@@ -582,7 +595,10 @@ mod tests {
             prev = v;
         }
         // The carrier itself steps by up to 2*pi*f/sr ~= 0.026 per sample.
-        assert!(max_delta < 0.1, "isochronic gate clicked: delta {max_delta}");
+        assert!(
+            max_delta < 0.1,
+            "isochronic gate clicked: delta {max_delta}"
+        );
     }
 
     #[test]

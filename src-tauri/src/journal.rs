@@ -58,7 +58,8 @@ impl Journal {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("could not create {dir:?}: {e}"))?;
         }
-        let conn = Connection::open(path).map_err(|e| format!("could not open the journal: {e}"))?;
+        let conn =
+            Connection::open(path).map_err(|e| format!("could not open the journal: {e}"))?;
         Self::from_connection(conn)
     }
 
@@ -102,7 +103,8 @@ impl Journal {
         )
         .map_err(|e| format!("could not prepare the journal: {e}"))?;
 
-        conn.pragma_update(None, "user_version", SCHEMA_VERSION).ok();
+        conn.pragma_update(None, "user_version", SCHEMA_VERSION)
+            .ok();
         Ok(Self { conn })
     }
 
@@ -272,9 +274,11 @@ impl Journal {
     pub fn snapshot(&self, id: i64) -> Result<Option<Preset>, String> {
         let json: Option<String> = self
             .conn
-            .query_row("SELECT preset_snapshot FROM sessions WHERE id = ?1", params![id], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT preset_snapshot FROM sessions WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
             .optional()
             .map_err(|e| e.to_string())?;
         match json {
@@ -423,10 +427,18 @@ mod tests {
         let closed = j.reap_unfinished(60.0).unwrap();
         assert_eq!(closed, 1, "expected exactly one entry to be closed");
 
-        let ids: Vec<String> = j.recent(10).unwrap().into_iter().map(|r| r.preset_id).collect();
+        let ids: Vec<String> = j
+            .recent(10)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.preset_id)
+            .collect();
         assert!(ids.contains(&"long".to_string()));
         assert!(ids.contains(&"done".to_string()));
-        assert!(!ids.contains(&"short".to_string()), "a stub session survived");
+        assert!(
+            !ids.contains(&"short".to_string()),
+            "a stub session survived"
+        );
 
         // Running it again must be a no-op rather than re-closing anything.
         assert_eq!(j.reap_unfinished(60.0).unwrap(), 0);
@@ -436,7 +448,9 @@ mod tests {
     fn recent_is_newest_first_and_respects_the_limit() {
         let j = Journal::in_memory().unwrap();
         for i in 0..5 {
-            let id = j.start(&preset(&format!("p{i}"), &format!("P{i}"))).unwrap();
+            let id = j
+                .start(&preset(&format!("p{i}"), &format!("P{i}")))
+                .unwrap();
             j.finish(id, 60.0, true).unwrap();
         }
         let rows = j.recent(3).unwrap();

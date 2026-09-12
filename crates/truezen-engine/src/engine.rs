@@ -141,23 +141,44 @@ pub enum Command {
     Play,
     Pause,
     Stop,
-    Seek { seconds: f64 },
+    Seek {
+        seconds: f64,
+    },
     SetMasterGain(f64),
-    SetLayerEnabled { index: usize, on: bool },
-    SetLayerParam { index: usize, param: LayerParam, value: f64 },
+    SetLayerEnabled {
+        index: usize,
+        on: bool,
+    },
+    SetLayerParam {
+        index: usize,
+        param: LayerParam,
+        value: f64,
+    },
     /// Give a layer a source of audio. Attaching in place rather than
     /// rebuilding the session means adding a backing track does not restart
     /// what is already playing.
-    AttachSource { index: usize, source: Box<dyn SampleSource> },
-    DetachSource { index: usize },
+    AttachSource {
+        index: usize,
+        source: Box<dyn SampleSource>,
+    },
+    DetachSource {
+        index: usize,
+    },
     /// Toggle sidechain ducking live. A structural reload would restart the
     /// session, which is too much for flipping a switch.
-    SetLayerDuck { index: usize, on: bool, depth: f64 },
+    SetLayerDuck {
+        index: usize,
+        on: bool,
+        depth: f64,
+    },
     /// Swap the automation without disturbing the layers or the clock. Editing
     /// a curve mid-session must not restart the session.
     ReplaceTimeline(Box<TimelineSwap>),
     /// Hand a parameter back to its automation track.
-    SetTrackLatched { track: usize, latched: bool },
+    SetTrackLatched {
+        track: usize,
+        latched: bool,
+    },
     /// Restore every automated parameter to timeline control.
     UnlatchAll,
     /// Swap in a whole new layer stack. The displaced state is returned for
@@ -241,7 +262,9 @@ impl Engine {
 
     /// Convenience for tests; the host builds the swap off-thread.
     pub fn set_timeline(&mut self, timeline: Option<Timeline>) {
-        self.apply(Command::ReplaceTimeline(Box::new(TimelineSwap::new(timeline))));
+        self.apply(Command::ReplaceTimeline(Box::new(TimelineSwap::new(
+            timeline,
+        ))));
     }
 
     /// Returns any displaced heap data for the caller to drop off-thread.
@@ -280,7 +303,11 @@ impl Engine {
                     l.set_enabled(on);
                 }
             }
-            Command::SetLayerParam { index, param, value } => {
+            Command::SetLayerParam {
+                index,
+                param,
+                value,
+            } => {
                 if let Some(l) = self.state.layers.get_mut(index) {
                     apply_layer_param(l, param, value);
                 }
@@ -353,7 +380,12 @@ impl Engine {
     /// without gliding.
     fn snap_automation(&mut self) {
         let t = self.position_s();
-        let SessionState { layers, timeline, track_latched, .. } = &mut *self.state;
+        let SessionState {
+            layers,
+            timeline,
+            track_latched,
+            ..
+        } = &mut *self.state;
         let Some(tl) = timeline.as_ref() else { return };
         for (i, track) in tl.tracks.iter().enumerate() {
             if track_latched.get(i).copied().unwrap_or(false) {
@@ -377,7 +409,11 @@ impl Engine {
 
     /// Latch every track driving `target`, so the user's value sticks.
     fn latch_matching(&mut self, target: ParamTarget) {
-        let SessionState { timeline, track_latched, .. } = &mut *self.state;
+        let SessionState {
+            timeline,
+            track_latched,
+            ..
+        } = &mut *self.state;
         let Some(tl) = timeline.as_ref() else { return };
         for (i, track) in tl.tracks.iter().enumerate() {
             if track.target == target {
@@ -402,7 +438,12 @@ impl Engine {
         let t = self.pos as f64 / self.sample_rate;
         // Split the borrow so the timeline can be read while layers are
         // written.
-        let SessionState { layers, timeline, track_latched, .. } = &mut *self.state;
+        let SessionState {
+            layers,
+            timeline,
+            track_latched,
+            ..
+        } = &mut *self.state;
         let Some(tl) = timeline.as_ref() else {
             self.fade = 1.0;
             return;

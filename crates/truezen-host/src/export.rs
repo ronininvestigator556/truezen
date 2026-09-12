@@ -27,7 +27,11 @@ pub struct ExportOptions {
 
 impl Default for ExportOptions {
     fn default() -> Self {
-        Self { sample_rate: 48_000, bits: 24, seconds: None }
+        Self {
+            sample_rate: 48_000,
+            bits: 24,
+            seconds: None,
+        }
     }
 }
 
@@ -48,11 +52,7 @@ pub fn render_to_wav(
         (d > 0.0).then_some(d)
     }) {
         Some(s) if s > 0.0 => s,
-        _ => {
-            return Err(
-                "this preset runs until you stop it, so an export needs a length".into()
-            )
-        }
+        _ => return Err("this preset runs until you stop it, so an export needs a length".into()),
     };
 
     let rate = opts.sample_rate;
@@ -65,7 +65,9 @@ pub fn render_to_wav(
         if cfg.kind != LayerKind::File {
             continue;
         }
-        let Some(file) = cfg.file_path.as_ref() else { continue };
+        let Some(file) = cfg.file_path.as_ref() else {
+            continue;
+        };
         let source = DirectSource::open(file, rate, cfg.loop_file)
             .map_err(|e| format!("layer {} ({}): {e}", i + 1, cfg.name))?;
         if let Some(layer) = state.layers.get_mut(i) {
@@ -128,6 +130,8 @@ pub fn render_to_wav(
         }
     }
 
-    writer.finalize().map_err(|e| format!("could not finish the file: {e}"))?;
+    writer
+        .finalize()
+        .map_err(|e| format!("could not finish the file: {e}"))?;
     Ok(seconds)
 }

@@ -100,7 +100,11 @@ mod tests {
             s.tick();
         }
         assert!(s.is_settled());
-        assert_eq!(s.current(), 440.0, "must settle exactly, not asymptotically");
+        assert_eq!(
+            s.current(),
+            440.0,
+            "must settle exactly, not asymptotically"
+        );
     }
 
     #[test]

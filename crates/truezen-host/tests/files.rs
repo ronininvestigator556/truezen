@@ -128,7 +128,10 @@ fn decodes_a_wav_and_resamples_it_to_the_engine_rate() {
 
     assert_eq!(d.source_rate(), 44_100, "did not report the file's rate");
     // One second in at 44.1 k should give about one second out at 48 k.
-    assert!(total > 47_000, "only produced {total} frames from a 1 s file");
+    assert!(
+        total > 47_000,
+        "only produced {total} frames from a 1 s file"
+    );
     let freq = dominant_hz(&out[..total * 2], ENGINE_RATE);
     assert!((freq - 440.0).abs() < 5.0, "tone came through at {freq} Hz");
 }
@@ -195,7 +198,10 @@ fn a_looping_tone_has_no_click() {
     let out = drain(&mut s, 96_000);
 
     let left: Vec<f32> = out.iter().step_by(2).copied().collect();
-    let worst = left.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    let worst = left
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0f32, f32::max);
     // A 220 Hz sine at 0.5 moves at most 0.0144 per sample; a seam would show
     // a step near full scale.
     assert!(worst < 0.02, "loop seam clicked: step of {worst}");
@@ -233,5 +239,8 @@ fn the_streamed_source_delivers_the_same_audio() {
 
     assert_eq!(s.underruns(), 0, "the decoder thread fell behind");
     let freq = dominant_hz(&out, ENGINE_RATE);
-    assert!((freq - 660.0).abs() < 5.0, "streamed tone came through at {freq} Hz");
+    assert!(
+        (freq - 660.0).abs() < 5.0,
+        "streamed tone came through at {freq} Hz"
+    );
 }
