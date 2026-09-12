@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Deliberately no global `RUSTFLAGS: -D warnings`: that applies to
+  # dependencies too, so a warning in a crate we do not control would fail the
+  # build. Denying warnings belongs on our own clippy run, below.
+
+jobs:
+  check:
+    name: Format and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: ./.github/actions/linux-deps
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not hide the others.
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/linux-deps
+        if: runner.os == 'Linux'
+      - uses: Swatinem/rust-cache@v2
+
+      # Release mode: the DSP suite renders four hours of audio and is
+      # unusably slow unoptimised.
+      - name: Test
+        run: cargo test --release --workspace
+      # The audio-device tests are excluded by default; CI runners have no
+      # sound hardware, so they would fail for reasons unrelated to the code.
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx vite build
+
+  bundle:
+    name: Bundle for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/linux-deps
+        if: runner.os == 'Linux'
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+
+      # Proves the app actually packages on each platform. Tauri cannot
+      # cross-compile between them, so this matrix is the only way to know.
+      - name: Bundle
+        run: npx tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: truezen-${{ matrix.os }}
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.app
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+          if-no-files-found: warn
+          retention-days: 14
