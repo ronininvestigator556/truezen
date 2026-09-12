@@ -106,6 +106,31 @@ impl Journal {
         Ok(Self { conn })
     }
 
+    /// Close out entries left open by a crash, a force quit, or a logout.
+    ///
+    /// Without this a killed session stays open forever and shows in the
+    /// history as one that never ended. The last recorded progress is the best
+    /// estimate of when it stopped; anything shorter than `min_s` is dropped
+    /// on the same reasoning as a short session that ended normally.
+    pub fn reap_unfinished(&self, min_s: f64) -> Result<usize, String> {
+        self.conn
+            .execute(
+                "DELETE FROM sessions WHERE ended_at IS NULL AND listened_s < ?1",
+                params![min_s],
+            )
+            .map_err(|e| e.to_string())?;
+        let closed = self
+            .conn
+            .execute(
+                "UPDATE sessions
+                    SET ended_at = started_at + CAST(listened_s AS INTEGER)
+                  WHERE ended_at IS NULL",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(closed)
+    }
+
     /// Begin recording a session. Returns its id.
     pub fn start(&self, preset: &Preset) -> Result<i64, String> {
         let snapshot = preset.to_json().map_err(|e| e.to_string())?;
@@ -378,6 +403,33 @@ mod tests {
         assert!(j.recent(10).unwrap().is_empty());
         assert!(j.stats().unwrap().is_empty());
         assert!(j.snapshot(id).unwrap().is_none());
+    }
+
+    /// A killed session must not linger as an entry that never ended.
+    #[test]
+    fn unfinished_sessions_are_closed_or_dropped_on_open() {
+        let j = Journal::in_memory().unwrap();
+
+        // Long enough to keep, but never closed.
+        let kept = j.start(&preset("long", "Long")).unwrap();
+        j.progress(kept, 900.0).unwrap();
+        // Too short to be worth keeping, also never closed.
+        let dropped = j.start(&preset("short", "Short")).unwrap();
+        j.progress(dropped, 8.0).unwrap();
+        // One that ended properly, which must be left alone.
+        let done = j.start(&preset("done", "Done")).unwrap();
+        j.finish(done, 300.0, true).unwrap();
+
+        let closed = j.reap_unfinished(60.0).unwrap();
+        assert_eq!(closed, 1, "expected exactly one entry to be closed");
+
+        let ids: Vec<String> = j.recent(10).unwrap().into_iter().map(|r| r.preset_id).collect();
+        assert!(ids.contains(&"long".to_string()));
+        assert!(ids.contains(&"done".to_string()));
+        assert!(!ids.contains(&"short".to_string()), "a stub session survived");
+
+        // Running it again must be a no-op rather than re-closing anything.
+        assert_eq!(j.reap_unfinished(60.0).unwrap(), 0);
     }
 
     #[test]

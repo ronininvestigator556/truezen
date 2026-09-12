@@ -63,7 +63,11 @@ impl App {
             Err(e) => (None, Some(e.to_string())),
         };
         let (journal, journal_error) = match Journal::open(journal_path) {
-            Ok(j) => (j, None),
+            Ok(j) => {
+                // A previous run may have been killed mid-session.
+                let err = j.reap_unfinished(MIN_SESSION_S).err();
+                (j, err)
+            }
             // Fall back to memory so the rest of the app works; the error is
             // surfaced rather than silently losing every session.
             Err(e) => (
