@@ -50,6 +50,11 @@
           </div>
           <p class="desc">{p.description}</p>
           <div class="tags">
+            {#if p.source !== "factory"}
+              <span class="tag src" class:override={p.source === "override"}>
+                {p.source === "override" ? "edited" : "yours"}
+              </span>
+            {/if}
             <span class="tag">{p.layerCount} layers</span>
             {#if p.requiresHeadphones}
               <span class="tag hp" title="Binaural layers do not work on speakers">headphones</span>
@@ -161,6 +166,14 @@
     border-radius: 999px;
     background: var(--sunken);
     color: var(--muted);
+  }
+  .tag.src {
+    color: var(--accent);
+    background: var(--accent-bg);
+  }
+  .tag.src.override {
+    color: var(--violet);
+    background: var(--violet-bg);
   }
   .tag.hp {
     color: var(--violet);

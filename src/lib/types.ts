@@ -64,6 +64,8 @@ export interface Preset {
   timeline: Timeline | null;
 }
 
+export type PresetSource = "factory" | "user" | "override";
+
 export interface PresetSummary {
   id: string;
   name: string;
@@ -72,6 +74,15 @@ export interface PresetSummary {
   requiresHeadphones: boolean;
   durationS: number;
   layerCount: number;
+  source: PresetSource;
+}
+
+/** The live preset, whether it has unsaved edits, and where the library lives. */
+export interface Editing {
+  preset: Preset | null;
+  dirty: boolean;
+  source: PresetSource | null;
+  libraryDir: string;
 }
 
 export interface Meters {

@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { api } from "./lib/api";
   import { clock } from "./lib/curve";
+  import LibraryBar from "./lib/components/LibraryBar.svelte";
   import LayerCard from "./lib/components/LayerCard.svelte";
   import NumberField from "./lib/components/NumberField.svelte";
   import PlayView from "./lib/components/PlayView.svelte";
@@ -14,6 +16,7 @@
     type LayerParam,
     type Meters,
     type Preset,
+    type PresetSource,
     type PresetSummary,
     type Timeline,
   } from "./lib/types";
@@ -34,6 +37,10 @@
   let acknowledged = $state(false);
   let masterGain = $state(0.7);
   let view = $state<View>("play");
+  let dirty = $state(false);
+  let source = $state<PresetSource | null>(null);
+  let libraryDir = $state("");
+  let notice = $state<string | null>(null);
 
   let playing = $derived(meters?.playing ?? false);
   let sampleRate = $derived(health?.status.sampleRate || 48000);
@@ -52,11 +59,12 @@
     const saved = localStorage.getItem(VIEW_KEY);
     if (saved === "play" || saved === "lab") view = saved;
 
-    Promise.all([api.listPresets(), api.listDevices().catch(() => []), api.health()])
-      .then(([p, d, h]) => {
+    Promise.all([api.listPresets(), api.listDevices().catch(() => []), api.health(), api.editing()])
+      .then(([p, d, h, e]) => {
         presets = p;
         devices = d;
         health = h;
+        libraryDir = e.libraryDir;
         if (h.error) error = h.error;
       })
       .catch(fail);
@@ -92,7 +100,89 @@
     try {
       preset = await api.loadPreset(id);
       masterGain = preset.master_gain;
+      dirty = false;
+      source = presets.find((p) => p.id === id)?.source ?? null;
       error = null;
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  /// Re-read the library after anything that could have changed it.
+  async function refreshLibrary(selectId?: string) {
+    presets = await api.listPresets();
+    const e = await api.editing();
+    dirty = e.dirty;
+    source = e.source;
+    libraryDir = e.libraryDir;
+    if (selectId) source = presets.find((p) => p.id === selectId)?.source ?? source;
+  }
+
+  function announce(msg: string) {
+    notice = msg;
+    setTimeout(() => (notice = null), 4000);
+  }
+
+  async function save() {
+    try {
+      const s = await api.savePreset();
+      await refreshLibrary(s.id);
+      announce(`Saved “${s.name}”.`);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function saveAs(name: string) {
+    try {
+      const s = await api.savePresetAs(name);
+      preset = await api.currentPreset();
+      await refreshLibrary(s.id);
+      announce(`Saved “${s.name}” to your library.`);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function remove() {
+    if (!preset) return;
+    const reverting = source === "override";
+    try {
+      await api.deletePreset(preset.id);
+      preset = await api.currentPreset();
+      await refreshLibrary(preset?.id);
+      announce(reverting ? "Reverted to the built-in preset." : "Deleted.");
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function exportPreset() {
+    if (!preset) return;
+    try {
+      const path = await saveDialog({
+        defaultPath: `${preset.id}.json`,
+        filters: [{ name: "TrueZen preset", extensions: ["json"] }],
+      });
+      if (!path) return;
+      await api.exportPreset(preset.id, path);
+      announce(`Exported to ${path}.`);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function importPreset() {
+    try {
+      const path = await openDialog({
+        multiple: false,
+        filters: [{ name: "TrueZen preset", extensions: ["json"] }],
+      });
+      if (typeof path !== "string") return;
+      const s = await api.importPreset(path);
+      await refreshLibrary();
+      await choose(s.id);
+      announce(`Imported “${s.name}”.`);
     } catch (e) {
       fail(e);
     }
@@ -124,16 +214,19 @@
       else if (param === "ramp_ms") layer.ramp_ms = value;
       else if (param === "depth") layer.depth = value;
     }
+    dirty = true;
     api.setLayerParam(index, param, value).catch(fail);
   }
 
   function onEnabled(index: number, on: boolean) {
     if (preset?.layers[index]) preset.layers[index].enabled = on;
+    dirty = true;
     api.setLayerEnabled(index, on).catch(fail);
   }
 
   function setGain(v: number) {
     masterGain = v;
+    dirty = true;
     api.setMasterGain(v).catch(fail);
   }
 
@@ -147,6 +240,7 @@
     // Keep the local copy in step so the editor redraws from the same shape the
     // engine just received.
     preset.timeline = t;
+    dirty = true;
     api.updateTimeline(t).catch(fail);
   }
 
@@ -223,6 +317,10 @@
       {error}
       <button onclick={() => (error = null)}>dismiss</button>
     </div>
+  {/if}
+
+  {#if notice}
+    <div class="banner ok">{notice}</div>
   {/if}
 
   {#if needsHeadphones && monoOutput}
@@ -324,6 +422,17 @@
         </div>
 
         <div class="rack">
+            <LibraryBar
+              name={preset.name}
+              {source}
+              {dirty}
+              {libraryDir}
+              onsave={save}
+              onsaveas={saveAs}
+              ondelete={remove}
+              onexport={exportPreset}
+              onimport={importPreset}
+            />
             <div class="rackhead">
               <h2>{preset.name}</h2>
               <p>{preset.description}</p>
@@ -478,6 +587,10 @@
   .banner.info {
     background: var(--violet-bg);
     color: var(--violet);
+  }
+  .banner.ok {
+    background: var(--accent-bg);
+    color: var(--accent);
   }
   .banner button {
     margin-left: auto;

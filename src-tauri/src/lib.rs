@@ -3,14 +3,18 @@
 //! A thin, deliberately dumb layer: it owns the [`AudioHost`], forwards
 //! commands, and serialises telemetry. No audio logic lives here.
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::Serialize;
-use truezen_engine::factory;
+use tauri::Manager;
 use truezen_engine::preset::{Goal, Preset};
 use truezen_engine::timeline::{LayerParam, Timeline};
 use truezen_engine::Meters;
 use truezen_host::{AudioHost, DeviceInfo, HostStatus, Stats};
+
+mod store;
+use store::{Source, Store};
 
 /// A failure the UI can show. Commands return `Result<_, String>` because
 /// Tauri needs the error serialisable and there is nothing the frontend can do
@@ -23,21 +27,30 @@ struct App {
     /// rather than simply appearing broken.
     host_error: Option<String>,
     current: Option<Preset>,
+    /// True when `current` has been edited since it was loaded or saved.
+    dirty: bool,
+    store: Store,
 }
 
 impl App {
-    fn new() -> Self {
-        match AudioHost::spawn(None) {
-            Ok(host) => Self {
-                host: Some(host),
-                host_error: None,
-                current: None,
-            },
-            Err(e) => Self {
-                host: None,
-                host_error: Some(e.to_string()),
-                current: None,
-            },
+    fn new(store: Store) -> Self {
+        let (host, host_error) = match AudioHost::spawn(None) {
+            Ok(h) => (Some(h), None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+        Self {
+            host,
+            host_error,
+            current: None,
+            dirty: false,
+            store,
+        }
+    }
+
+    /// Record that the live preset no longer matches what is on disk.
+    fn touch(&mut self) {
+        if self.current.is_some() {
+            self.dirty = true;
         }
     }
 
@@ -70,25 +83,30 @@ struct PresetSummary {
     requires_headphones: bool,
     duration_s: f64,
     layer_count: usize,
+    source: Source,
 }
 
-impl From<&Preset> for PresetSummary {
-    fn from(p: &Preset) -> Self {
-        Self {
-            id: p.id.clone(),
-            name: p.name.clone(),
-            goal: p.goal.label().to_string(),
-            description: p.description.clone(),
-            requires_headphones: p.requires_headphones,
-            duration_s: p.duration_s(),
-            layer_count: p.layers.len(),
-        }
+fn summarise(p: &Preset, source: Source) -> PresetSummary {
+    PresetSummary {
+        id: p.id.clone(),
+        name: p.name.clone(),
+        goal: p.goal.label().to_string(),
+        description: p.description.clone(),
+        requires_headphones: p.requires_headphones,
+        duration_s: p.duration_s(),
+        layer_count: p.layers.len(),
+        source,
     }
 }
 
 #[tauri::command]
-fn list_presets() -> Vec<PresetSummary> {
-    factory::load_all().iter().map(PresetSummary::from).collect()
+fn list_presets(state: State) -> Vec<PresetSummary> {
+    let Ok(app) = state.lock() else { return Vec::new() };
+    app.store
+        .all()
+        .iter()
+        .map(|(p, s)| summarise(p, *s))
+        .collect()
 }
 
 #[tauri::command]
@@ -108,12 +126,123 @@ fn goals() -> Vec<String> {
 
 #[tauri::command]
 fn load_preset(id: String, state: State) -> Cmd<Preset> {
-    let preset = factory::by_id(&id).ok_or_else(|| format!("no preset '{id}'"))?;
-    preset.validate()?;
     with(&state, |app| {
+        let (preset, _) = app.store.get(&id).ok_or_else(|| format!("no preset '{id}'"))?;
+        preset.validate()?;
         app.host()?.load_preset(preset.clone()).map_err(|e| e.to_string())?;
         app.current = Some(preset.clone());
+        app.dirty = false;
         Ok(preset)
+    })
+}
+
+// --- library -------------------------------------------------------------
+
+/// The live preset, its origin, and whether it has unsaved edits.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Editing {
+    preset: Option<Preset>,
+    dirty: bool,
+    source: Option<Source>,
+    /// Where user presets live, so the UI can point at the folder.
+    library_dir: String,
+}
+
+#[tauri::command]
+fn editing(state: State) -> Editing {
+    let Ok(app) = state.lock() else {
+        return Editing { preset: None, dirty: false, source: None, library_dir: String::new() };
+    };
+    let source = app.current.as_ref().and_then(|p| app.store.get(&p.id)).map(|(_, s)| s);
+    Editing {
+        preset: app.current.clone(),
+        dirty: app.dirty,
+        source,
+        library_dir: app.store.dir().display().to_string(),
+    }
+}
+
+/// Save the live preset over itself. Saving a factory preset writes a user
+/// override rather than touching the shipped one.
+#[tauri::command]
+fn save_preset(state: State) -> Cmd<PresetSummary> {
+    with(&state, |app| {
+        let mut preset = app.current.clone().ok_or("nothing is loaded")?;
+        preset.refresh_headphone_flag();
+        app.store.save(&preset)?;
+        app.current = Some(preset.clone());
+        app.dirty = false;
+        let source = app.store.get(&preset.id).map(|(_, s)| s).unwrap_or(Source::User);
+        Ok(summarise(&preset, source))
+    })
+}
+
+/// Save the live preset under a new name, leaving the original alone.
+#[tauri::command]
+fn save_preset_as(name: String, state: State) -> Cmd<PresetSummary> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("a preset needs a name".into());
+    }
+    with(&state, |app| {
+        let mut preset = app.current.clone().ok_or("nothing is loaded")?;
+        preset.id = app.store.unique_id(&name);
+        preset.name = name.clone();
+        preset.refresh_headphone_flag();
+        app.store.save(&preset)?;
+        app.current = Some(preset.clone());
+        app.dirty = false;
+        Ok(summarise(&preset, Source::User))
+    })
+}
+
+/// Delete a saved preset. For an id that also exists in the factory set this
+/// reverts to the shipped version rather than removing it.
+#[tauri::command]
+fn delete_preset(id: String, state: State) -> Cmd<()> {
+    with(&state, |app| {
+        app.store.delete(&id)?;
+        // If the deleted preset was loaded, fall back to whatever now answers
+        // to that id so the UI is never pointing at something that is gone.
+        if app.current.as_ref().is_some_and(|p| p.id == id) {
+            match app.store.get(&id) {
+                Some((p, _)) => {
+                    app.host()?.load_preset(p.clone()).map_err(|e| e.to_string())?;
+                    app.current = Some(p);
+                }
+                None => app.current = None,
+            }
+            app.dirty = false;
+        }
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn export_preset(id: String, path: String, state: State) -> Cmd<()> {
+    with(&state, |app| {
+        let (preset, _) = app.store.get(&id).ok_or_else(|| format!("no preset '{id}'"))?;
+        let json = preset.to_json().map_err(|e| e.to_string())?;
+        std::fs::write(&path, json).map_err(|e| format!("could not write {path}: {e}"))
+    })
+}
+
+#[tauri::command]
+fn import_preset(path: String, state: State) -> Cmd<PresetSummary> {
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("could not read {path}: {e}"))?;
+    let mut preset = Preset::from_json(&text).map_err(|e| format!("{path} is not a preset: {e}"))?;
+    preset.validate()?;
+
+    with(&state, |app| {
+        // Never silently replace something already in the library: an imported
+        // file that happens to share an id is a different preset.
+        if app.store.get(&preset.id).is_some() {
+            preset.id = app.store.unique_id(&preset.name);
+        }
+        preset.refresh_headphone_flag();
+        app.store.save(&preset)?;
+        Ok(summarise(&preset, Source::User))
     })
 }
 
@@ -149,6 +278,10 @@ fn seek(seconds: f64, state: State) -> Cmd<()> {
 #[tauri::command]
 fn set_master_gain(gain: f64, state: State) -> Cmd<()> {
     with(&state, |a| {
+        if let Some(p) = a.current.as_mut() {
+            p.master_gain = gain;
+        }
+        a.touch();
         a.host()?.set_master_gain(gain).map_err(|e| e.to_string())
     })
 }
@@ -189,6 +322,7 @@ fn set_layer_param(index: usize, param: String, value: f64, state: State) -> Cmd
                 }
             }
         }
+        a.touch();
         a.host()?
             .set_layer_param(index, param, value)
             .map_err(|e| e.to_string())
@@ -204,6 +338,7 @@ fn set_layer_enabled(index: usize, on: bool, state: State) -> Cmd<()> {
             }
             p.refresh_headphone_flag();
         }
+        a.touch();
         a.host()?
             .set_layer_enabled(index, on)
             .map_err(|e| e.to_string())
@@ -227,6 +362,7 @@ fn update_timeline(timeline: Option<Timeline>, state: State) -> Cmd<()> {
         if let Some(p) = a.current.as_mut() {
             p.timeline = timeline.clone();
         }
+        a.touch();
         a.host()?
             .update_timeline(timeline)
             .map_err(|e| e.to_string())
@@ -329,9 +465,26 @@ fn select_device(id: Option<String>, state: State) -> Cmd<()> {
 
 pub fn run() {
     tauri::Builder::default()
-        .manage(Mutex::new(App::new()))
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Resolved here rather than in App::new because the config
+            // directory is only known once Tauri has a handle.
+            let dir: PathBuf = app
+                .path()
+                .app_config_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("presets");
+            app.manage(Mutex::new(App::new(Store::new(dir))));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_presets,
+            editing,
+            save_preset,
+            save_preset_as,
+            delete_preset,
+            export_preset,
+            import_preset,
             goals,
             load_preset,
             current_preset,

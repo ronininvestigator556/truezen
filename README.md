@@ -16,7 +16,7 @@ most sessions from one click on a preset.
 | 2 | Real-time audio host | done |
 | 3 | Tauri bridge + Lab view | done |
 | 4 | Timeline editor + Play view | done |
-| 5 | Preset import/export | |
+| 5 | Preset library, import/export | done |
 | 6 | File layers + WAV export | |
 | 7 | Journal, tray, hotkeys | |
 | 8 | Packaging + CI | |
@@ -79,10 +79,24 @@ its own data rather than the parameter's full range, so a beat track moving
 between 8 and 10 Hz reads as a shape instead of a flat line at the bottom of a
 0-60 Hz axis. Edits swap the automation without restarting the session.
 
+## Your own presets
+
+Every edit in the Lab marks the session unsaved. **Save** writes it to your
+library; **Save as…** makes a copy under a new name. Saving over a built-in
+preset does not touch the shipped one — it writes an override that hides it in
+the list, and **Revert** removes the override to get the original back.
+
+Presets are one JSON file each, under the app's config directory
+(`~/Library/Application Support/com.truezen.desktop/presets` on macOS). They are
+plain text, so they diff, they version-control, and you can fix one by hand if
+you break it. **Export…** and **Import…** move a single file in or out; an
+import that collides with an existing id is given a new one rather than
+silently replacing what you already had.
+
 ## Tests
 
 ```sh
-cargo test --release                          # 68 tests, no hardware needed
+cargo test --release                          # 74 tests, no hardware needed
 cargo test --release -p truezen-host -- --ignored   # 8 tests, needs an audio device
 ```
 

@@ -1,11 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DeviceInfo, Frame, Health, Preset, PresetSummary, Timeline } from "./types";
+import type {
+  DeviceInfo,
+  Editing,
+  Frame,
+  Health,
+  Preset,
+  PresetSummary,
+  Timeline,
+} from "./types";
 
 export const api = {
   listPresets: () => invoke<PresetSummary[]>("list_presets"),
   goals: () => invoke<string[]>("goals"),
   loadPreset: (id: string) => invoke<Preset>("load_preset", { id }),
   currentPreset: () => invoke<Preset | null>("current_preset"),
+  editing: () => invoke<Editing>("editing"),
+
+  savePreset: () => invoke<PresetSummary>("save_preset"),
+  savePresetAs: (name: string) => invoke<PresetSummary>("save_preset_as", { name }),
+  deletePreset: (id: string) => invoke<void>("delete_preset", { id }),
+  exportPreset: (id: string, path: string) => invoke<void>("export_preset", { id, path }),
+  importPreset: (path: string) => invoke<PresetSummary>("import_preset", { path }),
 
   play: () => invoke<void>("play"),
   pause: () => invoke<void>("pause"),
