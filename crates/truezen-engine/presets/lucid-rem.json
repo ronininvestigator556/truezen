@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "id": "lucid-rem",
+  "name": "Lucid / REM Window",
+  "goal": "exploration",
+  "description": "A long 4.5 Hz theta hold with brief 40 Hz gamma bursts through the second half, timed for the REM-dense end of a sleep cycle. Set it to start a few hours in.",
+  "requires_headphones": true,
+  "master_gain": 0.55,
+  "layers": [
+    {
+      "name": "Theta bed",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 190.0,
+      "beat_hz": 4.5,
+      "gain": 0.26,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Gamma burst",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 300.0,
+      "beat_hz": 40.0,
+      "gain": 0.0,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Pink bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.16,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 1100.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "target": {
+          "kind": "layer",
+          "index": 1,
+          "param": "gain"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1800.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1800.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1820.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1890.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1910.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1980.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2000.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2070.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2090.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2160.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2180.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2250.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2270.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2340.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2360.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2430.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2450.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2520.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2540.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2610.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2630.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2700.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2720.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2790.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2810.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2880.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2900.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2970.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2990.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3060.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3080.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3150.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3170.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3240.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3260.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3330.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3350.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3420.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3440.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3510.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3530.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3600.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3620.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3690.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3710.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3780.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3800.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3870.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3890.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3960.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3980.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 4050.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 4070.0,
+            "value": 0.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 4140.0,
+            "value": 0.12,
+            "curve": "hold"
+          },
+          {
+            "at_s": 4160.0,
+            "value": 0.0,
+            "curve": "hold"
+          }
+        ]
+      }
+    ],
+    "duration_s": 4500.0,
+    "fade_out_s": 60.0
+  }
+}

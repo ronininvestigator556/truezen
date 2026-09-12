@@ -1,0 +1,13 @@
+[package]
+name = "truezen-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+truezen-engine = { workspace = true }
+hound = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+realfft = { workspace = true }
+clap = { version = "4", features = ["derive"] }

@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/truezen-engine",
+    "crates/truezen-host",
+    "crates/truezen-render",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/thomasallen/true-zen"
+
+[workspace.dependencies]
+truezen-engine = { path = "crates/truezen-engine" }
+truezen-host = { path = "crates/truezen-host" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "2.0"
+hound = "3.5"
+realfft = "3.5"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Audio DSP is unusably slow in a debug build; optimise deps even in dev.
+[profile.dev.package."*"]
+opt-level = 3

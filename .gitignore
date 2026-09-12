@@ -1,0 +1,6 @@
+target/
+node_modules/
+dist/
+*.wav
+*.flac
+.DS_Store

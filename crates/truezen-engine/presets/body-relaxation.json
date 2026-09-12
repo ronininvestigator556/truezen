@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "body-relaxation",
+  "name": "Body Relaxation",
+  "goal": "relaxation",
+  "description": "3.5 Hz delta on a low 111 Hz carrier, weighted toward the bottom of the spectrum so it is felt as much as heard.",
+  "requires_headphones": true,
+  "master_gain": 0.7,
+  "layers": [
+    {
+      "name": "Delta",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 111.0,
+      "beat_hz": 3.5,
+      "gain": 0.3,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Brown bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.2,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "brown",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 600.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ],
+  "timeline": {
+    "tracks": [],
+    "duration_s": 1800.0,
+    "fade_out_s": 30.0
+  }
+}

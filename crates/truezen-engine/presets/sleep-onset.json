@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "id": "sleep-onset",
+  "name": "Sleep Onset",
+  "goal": "sleep",
+  "description": "Twenty-five minutes from 8 Hz down into 2.5 Hz delta while the brown-noise bed rises to cover it, then a four-minute fade to silence so nothing wakes you at the end.",
+  "requires_headphones": true,
+  "master_gain": 0.6,
+  "layers": [
+    {
+      "name": "Delta descent",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 180.0,
+      "beat_hz": 8.0,
+      "gain": 0.26,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Brown bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.18,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "brown",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 500.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "target": {
+          "kind": "layer",
+          "index": 0,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 8.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 1500.0,
+            "value": 2.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 2700.0,
+            "value": 2.5,
+            "curve": "hold"
+          }
+        ]
+      },
+      {
+        "target": {
+          "kind": "layer",
+          "index": 1,
+          "param": "gain"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 0.18,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 1500.0,
+            "value": 0.3,
+            "curve": "smoothstep"
+          },
+          {
+            "at_s": 2700.0,
+            "value": 0.3,
+            "curve": "hold"
+          }
+        ]
+      }
+    ],
+    "duration_s": 2700.0,
+    "fade_out_s": 240.0
+  }
+}

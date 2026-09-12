@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "study-reading",
+  "name": "Study & Reading",
+  "goal": "focus",
+  "description": "Low-amplitude 12 Hz SMR with a nearly transparent noise bed. Deliberately quiet so it sits behind reading instead of competing with it.",
+  "requires_headphones": true,
+  "master_gain": 0.7,
+  "layers": [
+    {
+      "name": "SMR",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 220.0,
+      "beat_hz": 12.0,
+      "gain": 0.22,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Air",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.1,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 3000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ],
+  "timeline": {
+    "tracks": [],
+    "duration_s": 3600.0,
+    "fade_out_s": 20.0
+  }
+}

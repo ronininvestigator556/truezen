@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "id": "deep-theta",
+  "name": "Deep Theta",
+  "goal": "meditation",
+  "description": "A full descent: 10 Hz to 4.5 Hz across twenty minutes, a long hold at the bottom, then a deliberate climb back to 10 Hz so you do not surface abruptly.",
+  "requires_headphones": true,
+  "master_gain": 0.7,
+  "layers": [
+    {
+      "name": "Theta descent",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 220.0,
+      "beat_hz": 10.0,
+      "gain": 0.3,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Pink bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.18,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 1300.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "target": {
+          "kind": "layer",
+          "index": 0,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 10.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 600.0,
+            "value": 6.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 1200.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 2520.0,
+            "value": 4.5,
+            "curve": "hold"
+          },
+          {
+            "at_s": 2700.0,
+            "value": 10.0,
+            "curve": "exponential"
+          }
+        ]
+      }
+    ],
+    "duration_s": 2700.0,
+    "fade_out_s": 25.0
+  }
+}

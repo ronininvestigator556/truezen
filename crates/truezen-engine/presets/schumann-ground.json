@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "schumann-ground",
+  "name": "Schumann Ground",
+  "goal": "relaxation",
+  "description": "A sustained 7.83 Hz \u2014 the fundamental resonance of the cavity between the earth's surface and the ionosphere \u2014 on a 136.1 Hz carrier. Runs until you stop it.",
+  "requires_headphones": true,
+  "master_gain": 0.7,
+  "layers": [
+    {
+      "name": "7.83 Hz",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 136.1,
+      "beat_hz": 7.83,
+      "gain": 0.3,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Brown bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.16,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "brown",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 700.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ]
+}

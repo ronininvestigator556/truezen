@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "id": "morning-activation",
+  "name": "Morning Activation",
+  "goal": "energy",
+  "description": "Eight minutes climbing from 6 Hz to 18 Hz, with an isochronic pulse fading in as it rises to give the top end some edge.",
+  "requires_headphones": true,
+  "master_gain": 0.7,
+  "layers": [
+    {
+      "name": "Rise",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 240.0,
+      "beat_hz": 6.0,
+      "gain": 0.3,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Pulse",
+      "kind": "isochronic",
+      "enabled": true,
+      "carrier_hz": 320.0,
+      "beat_hz": 18.0,
+      "gain": 0.0,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Pink bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.12,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 1800.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "target": {
+          "kind": "layer",
+          "index": 0,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 6.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 480.0,
+            "value": 18.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 900.0,
+            "value": 18.0,
+            "curve": "hold"
+          }
+        ]
+      },
+      {
+        "target": {
+          "kind": "layer",
+          "index": 1,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 6.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 480.0,
+            "value": 18.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 900.0,
+            "value": 18.0,
+            "curve": "hold"
+          }
+        ]
+      },
+      {
+        "target": {
+          "kind": "layer",
+          "index": 1,
+          "param": "gain"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 0.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 480.0,
+            "value": 0.14,
+            "curve": "smoothstep"
+          },
+          {
+            "at_s": 900.0,
+            "value": 0.14,
+            "curve": "hold"
+          }
+        ]
+      }
+    ],
+    "duration_s": 900.0,
+    "fade_out_s": 10.0
+  }
+}

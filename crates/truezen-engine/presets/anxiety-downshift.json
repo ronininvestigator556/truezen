@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "anxiety-downshift",
+  "name": "Anxiety Downshift",
+  "goal": "relaxation",
+  "description": "10 Hz alpha with the whole mix swelling at 0.1 Hz \u2014 six cycles a minute, the resonance-breathing rate. Breathe with the swell and the pace follows.",
+  "requires_headphones": true,
+  "master_gain": 0.7,
+  "layers": [
+    {
+      "name": "Alpha",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 210.0,
+      "beat_hz": 10.0,
+      "gain": 0.28,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.1,
+      "am_depth": 0.35,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Breathing bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.2,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.1,
+      "am_depth": 0.5,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 900.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    }
+  ],
+  "timeline": {
+    "tracks": [],
+    "duration_s": 900.0,
+    "fade_out_s": 20.0
+  }
+}

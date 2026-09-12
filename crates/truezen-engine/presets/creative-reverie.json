@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "creative-reverie",
+  "name": "Creative Reverie",
+  "goal": "exploration",
+  "description": "7.5 Hz theta on a 136.1 Hz carrier, the pitch often called the OM tone. Aimed at the loose, associative state just before sleep.",
+  "requires_headphones": true,
+  "master_gain": 0.7,
+  "layers": [
+    {
+      "name": "Theta",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 136.1,
+      "beat_hz": 7.5,
+      "gain": 0.3,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0
+    },
+    {
+      "name": "Pink bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.2,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 1200.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.05,
+      "lfo_depth": 0.5
+    }
+  ],
+  "timeline": {
+    "tracks": [],
+    "duration_s": 1800.0,
+    "fade_out_s": 20.0
+  }
+}
