@@ -601,6 +601,11 @@ fn apply_layer_param(layer: &mut Layer, param: LayerParam, value: f64) {
         LayerParam::Duty => layer.set_duty(value),
         LayerParam::RampMs => layer.set_ramp_ms(value),
         LayerParam::Depth => layer.set_depth(value),
+        LayerParam::DecayMs => layer.set_decay_ms(value),
+        LayerParam::StrikeMs => layer.set_strike_ms(value),
+        LayerParam::Tone => layer.set_tone(value),
+        LayerParam::PitchDrop => layer.set_pitch_drop(value),
+        LayerParam::Humanize => layer.set_humanize(value),
     }
 }
 

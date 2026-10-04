@@ -40,9 +40,15 @@
     isochronic: "isochronic",
     noise: "noise",
     file: "audio file",
+    drum: "drum",
   };
 
   let hasTone = $derived(layer.kind !== "noise" && layer.kind !== "file");
+  let isDrum = $derived(layer.kind === "drum");
+  // A drum's "carrier" is the pitch of the head and its "beat" is how often
+  // it is struck. Same parameters, but those words mean nothing at a drum.
+  let carrierLabel = $derived(isDrum ? "Pitch" : "Carrier");
+  let beatLabel = $derived(isDrum ? "Strikes" : "Beat");
   let band = $derived(bandFor(layer.beat_hz));
 
   function latch(param: LayerParam) {
@@ -110,7 +116,7 @@
   <div class="grid">
     {#if hasTone}
       <NumberField
-        label="Carrier"
+        label={carrierLabel}
         unit="Hz"
         value={layer.carrier_hz}
         min={20}
@@ -123,8 +129,8 @@
         onrelease={() => release("carrier")}
       />
       <NumberField
-        label="Beat"
-        unit="Hz"
+        label={beatLabel}
+        unit={isDrum ? "/s" : "Hz"}
         value={layer.beat_hz}
         min={0}
         max={60}
@@ -169,6 +175,69 @@
 
   {#if expanded}
     <div class="grid secondary">
+      {#if isDrum}
+        <NumberField
+          label="Ring"
+          unit="ms"
+          value={layer.decay_ms}
+          min={20}
+          max={900}
+          step={5}
+          decimals={0}
+          onchange={(v) => onparam(index, "decay_ms", v)}
+        />
+        <NumberField
+          label="Beater"
+          unit="ms"
+          value={layer.strike_ms}
+          min={3}
+          max={200}
+          step={1}
+          decimals={0}
+          onchange={(v) => onparam(index, "strike_ms", v)}
+        />
+        <NumberField
+          label="Tone"
+          value={layer.tone}
+          min={0}
+          max={1}
+          step={0.01}
+          decimals={2}
+          onchange={(v) => onparam(index, "tone", v)}
+        />
+        <NumberField
+          label="Pitch drop"
+          value={layer.pitch_drop}
+          min={0}
+          max={2}
+          step={0.01}
+          decimals={2}
+          onchange={(v) => onparam(index, "pitch_drop", v)}
+        />
+        <NumberField
+          label="Humanize"
+          value={layer.humanize}
+          min={0}
+          max={1}
+          step={0.01}
+          decimals={2}
+          onchange={(v) => onparam(index, "humanize", v)}
+        />
+        <NumberField
+          label="Beater pitch"
+          unit="Hz"
+          value={layer.filter_cutoff_hz}
+          min={200}
+          max={8000}
+          step={10}
+          decimals={0}
+          log
+          latched={latch("filter_cutoff")}
+          onchange={(v) => onparam(index, "filter_cutoff", v)}
+          onrelease={() => release("filter_cutoff")}
+        />
+      {/if}
+
       {#if layer.kind === "isochronic"}
         <NumberField
           label="Duty"
@@ -340,6 +409,10 @@
     color: var(--muted);
     cursor: pointer;
     white-space: nowrap;
+  }
+  .kind-drum {
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
   }
   .kind-file {
     color: var(--warn);

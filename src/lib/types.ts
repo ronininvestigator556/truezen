@@ -1,5 +1,11 @@
 /** Mirrors `truezen_engine::layer::LayerConfig`. */
-export type LayerKind = "binaural" | "monaural" | "isochronic" | "noise" | "file";
+export type LayerKind =
+  | "binaural"
+  | "monaural"
+  | "isochronic"
+  | "noise"
+  | "file"
+  | "drum";
 export type Waveform = "sine" | "triangle" | "square" | "saw";
 export type NoiseColor = "white" | "pink" | "brown";
 export type FilterMode = "low_pass" | "band_pass" | "high_pass";
@@ -18,6 +24,11 @@ export interface LayerConfig {
   depth: number;
   am_rate_hz: number;
   am_depth: number;
+  decay_ms: number;
+  strike_ms: number;
+  tone: number;
+  pitch_drop: number;
+  humanize: number;
   noise_color: NoiseColor;
   filter_mode: FilterMode;
   filter_cutoff_hz: number;
@@ -39,7 +50,12 @@ export type LayerParam =
   | "filter_cutoff"
   | "duty"
   | "ramp_ms"
-  | "depth";
+  | "depth"
+  | "decay_ms"
+  | "strike_ms"
+  | "tone"
+  | "pitch_drop"
+  | "humanize";
 
 export type ParamTarget =
   | { kind: "master_gain" }

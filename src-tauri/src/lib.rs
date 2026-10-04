@@ -468,6 +468,11 @@ fn parse_param(name: &str) -> Cmd<LayerParam> {
         "duty" => LayerParam::Duty,
         "ramp_ms" => LayerParam::RampMs,
         "depth" => LayerParam::Depth,
+        "decay_ms" => LayerParam::DecayMs,
+        "strike_ms" => LayerParam::StrikeMs,
+        "tone" => LayerParam::Tone,
+        "pitch_drop" => LayerParam::PitchDrop,
+        "humanize" => LayerParam::Humanize,
         other => return Err(format!("unknown parameter '{other}'")),
     })
 }
@@ -489,6 +494,11 @@ fn set_layer_param(index: usize, param: String, value: f64, state: State) -> Cmd
                     LayerParam::Duty => l.duty = value,
                     LayerParam::RampMs => l.ramp_ms = value,
                     LayerParam::Depth => l.depth = value,
+                    LayerParam::DecayMs => l.decay_ms = value,
+                    LayerParam::StrikeMs => l.strike_ms = value,
+                    LayerParam::Tone => l.tone = value,
+                    LayerParam::PitchDrop => l.pitch_drop = value,
+                    LayerParam::Humanize => l.humanize = value,
                 }
             }
         }

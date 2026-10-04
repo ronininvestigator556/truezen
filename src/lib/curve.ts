@@ -60,6 +60,11 @@ export const PARAM_RANGE: Record<LayerParam, Range> = {
   duty: { min: 0.05, max: 1, unit: "", step: 0.01, decimals: 2, label: "Duty" },
   ramp_ms: { min: 0.5, max: 100, unit: "ms", step: 0.5, decimals: 1, label: "Ramp" },
   depth: { min: 0, max: 1, unit: "", step: 0.01, decimals: 2, label: "Depth" },
+  decay_ms: { min: 20, max: 900, unit: "ms", step: 5, decimals: 0, label: "Ring" },
+  strike_ms: { min: 3, max: 200, unit: "ms", step: 1, decimals: 0, label: "Beater" },
+  tone: { min: 0, max: 1, unit: "", step: 0.01, decimals: 2, label: "Tone" },
+  pitch_drop: { min: 0, max: 2, unit: "", step: 0.01, decimals: 2, label: "Pitch drop" },
+  humanize: { min: 0, max: 1, unit: "", step: 0.01, decimals: 2, label: "Humanize" },
 };
 
 export const MASTER_RANGE: Range = {

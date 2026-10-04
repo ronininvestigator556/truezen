@@ -1116,3 +1116,167 @@ fn the_bed_returns_after_the_ducking_source_goes_quiet() {
         "bed did not recover: {after:.4} after against {during:.4} during"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The drum voice
+// ---------------------------------------------------------------------------
+
+fn drum_layer(carrier: f64, beat: f64) -> LayerConfig {
+    LayerConfig {
+        kind: LayerKind::Drum,
+        carrier_hz: carrier,
+        beat_hz: beat,
+        gain: 0.8,
+        filter_cutoff_hz: 2_000.0,
+        ..Default::default()
+    }
+}
+
+/// Rectify and decimate hard, to recover the slow strike envelope from under
+/// the body tone.
+fn strike_envelope(buf: &[f32]) -> (Vec<f64>, f64) {
+    const DECIM: usize = 480;
+    let l = channel(buf, 0);
+    let env: Vec<f64> = l
+        .chunks(DECIM)
+        .map(|c| c.iter().fold(0.0f64, |a, v| a.max(v.abs())))
+        .collect();
+    let mean = env.iter().sum::<f64>() / env.len() as f64;
+    (env.iter().map(|v| v - mean).collect(), SR / DECIM as f64)
+}
+
+/// The claim the whole preset rests on: the drum strikes at exactly the rate
+/// asked for, because that rate *is* the entrainment frequency.
+#[test]
+fn the_drum_strikes_at_the_beat_rate() {
+    for beat in [4.0, 4.5, 7.0] {
+        let buf = render(&preset_of(vec![drum_layer(90.0, beat)]), 40.0);
+        let (env, rate) = strike_envelope(&buf);
+        let measured = dominant_hz_at(&env, rate);
+        assert!(
+            (measured - beat).abs() < 0.1,
+            "asked for {beat} strikes per second, measured {measured}"
+        );
+    }
+}
+
+/// A drum rings and stops. Without a decay it would be a drone.
+#[test]
+fn each_strike_decays_before_the_next() {
+    let beat = 4.0;
+    let buf = render(&preset_of(vec![drum_layer(90.0, beat)]), 10.0);
+    let l = channel(&buf, 0);
+
+    let period = (SR / beat) as usize;
+    let quarter = period / 4;
+    // Skip the first few strikes so the startup ramp is out of the way.
+    let base = period * 8;
+
+    let energy = |from: usize| -> f64 {
+        l[base + from..base + from + quarter]
+            .iter()
+            .map(|v| v * v)
+            .sum::<f64>()
+    };
+    let onset = energy(0);
+    let tail = energy(quarter * 3);
+
+    assert!(onset > 0.0, "no sound at the strike");
+    assert!(
+        tail < onset * 0.2,
+        "the strike had not decayed: {tail:.4e} at the end against {onset:.4e} at the onset"
+    );
+}
+
+/// The head is tightest at impact. Without the pitch envelope a drum sounds
+/// like a tuned beep.
+#[test]
+fn the_body_pitch_falls_across_a_strike() {
+    let flat = render(&preset_of(vec![drum_layer(90.0, 3.0)]), 20.0);
+    let swept = render(
+        &preset_of(vec![LayerConfig {
+            pitch_drop: 0.0,
+            ..drum_layer(90.0, 3.0)
+        }]),
+        20.0,
+    );
+
+    // With a falling pitch, energy appears above the carrier that a fixed
+    // pitch never produces.
+    let above = |buf: &[f32]| {
+        let (mags, bin) = spectrum(&channel(buf, 0));
+        let lo = (115.0 / bin) as usize;
+        let hi = (190.0 / bin) as usize;
+        mags[lo..hi].iter().map(|m| m * m).sum::<f64>()
+    };
+
+    assert!(
+        above(&flat) > above(&swept) * 3.0,
+        "the pitch envelope added no energy above the carrier"
+    );
+}
+
+#[test]
+fn humanize_varies_the_weight_of_each_strike() {
+    // Body only. The beater's noise burst is deliberately different on every
+    // strike -- a drum whose stick hits are bit-identical sounds mechanical --
+    // so measuring the full signal would not isolate `humanize`.
+    let peaks = |humanize: f64| {
+        let buf = render(
+            &preset_of(vec![LayerConfig {
+                humanize,
+                tone: 0.0,
+                ..drum_layer(90.0, 4.0)
+            }]),
+            12.0,
+        );
+        let l = channel(&buf, 0);
+        let period = (SR / 4.0) as usize;
+        // Peak of each strike, skipping the startup ramp.
+        (4..40)
+            .map(|i| {
+                l[i * period..(i + 1) * period]
+                    .iter()
+                    .fold(0.0f64, |a, v| a.max(v.abs()))
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let even = peaks(0.0);
+    let spread = |v: &[f64]| {
+        let m = v.iter().sum::<f64>() / v.len() as f64;
+        (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len() as f64).sqrt() / m
+    };
+    assert!(spread(&even) < 0.01, "strikes varied with humanize off");
+    assert!(spread(&peaks(0.5)) > 0.05, "humanize changed nothing");
+}
+
+/// Same preset, same audio. A drum that drifted between runs would make the
+/// offline render disagree with what was heard.
+#[test]
+fn the_drum_is_deterministic() {
+    let p = preset_of(vec![drum_layer(90.0, 4.5)]);
+    assert_eq!(render(&p, 6.0), render(&p, 6.0), "two renders differed");
+}
+
+#[test]
+fn the_drum_is_bounded_and_free_of_dc() {
+    let buf = render(&preset_of(vec![drum_layer(90.0, 4.5)]), 20.0);
+    assert!(buf.iter().all(|s| s.is_finite()));
+    assert!(peak(&buf) <= 0.8913 + 1e-4, "clipped at {}", peak(&buf));
+    let l = channel(&buf, 0);
+    let dc = l.iter().sum::<f64>() / l.len() as f64;
+    assert!(dc.abs() < 0.01, "DC offset {dc}");
+}
+
+/// A drum layer with no rate set should still make one sound rather than
+/// sitting silent or spinning.
+#[test]
+fn a_drum_with_no_rate_strikes_once() {
+    let buf = render(&preset_of(vec![drum_layer(90.0, 0.0)]), 4.0);
+    let l = channel(&buf, 0);
+    let early: f64 = l[..(SR as usize)].iter().map(|v| v.abs()).sum();
+    let late: f64 = l[(SR * 3.0) as usize..].iter().map(|v| v.abs()).sum();
+    assert!(early > 1.0, "the single strike never sounded");
+    assert!(late < early * 0.01, "it never stopped");
+}

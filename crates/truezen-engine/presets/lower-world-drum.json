@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "id": "lower-world-drum",
+  "name": "Lower World Drum",
+  "goal": "exploration",
+  "description": "A deeper, slower drum at four strikes a second, held for half an hour with no callback \u2014 for journeying on your own clock rather than the recording's. Brown noise underneath gives it the sense of a room.",
+  "requires_headphones": true,
+  "master_gain": 0.68,
+  "layers": [
+    {
+      "name": "Deep drum",
+      "kind": "drum",
+      "enabled": true,
+      "carrier_hz": 74.0,
+      "beat_hz": 4.0,
+      "gain": 0.45,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "decay_ms": 230.0,
+      "strike_ms": 24.0,
+      "tone": 0.3,
+      "pitch_drop": 0.42,
+      "humanize": 0.18,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 1800.0,
+      "filter_q": 0.8,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0,
+      "file_path": null,
+      "loop_file": true,
+      "ducks_others": false,
+      "duck_depth": 0.6
+    },
+    {
+      "name": "Theta drive",
+      "kind": "binaural",
+      "enabled": true,
+      "carrier_hz": 110.0,
+      "beat_hz": 4.0,
+      "gain": 0.14,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "decay_ms": 190.0,
+      "strike_ms": 26.0,
+      "tone": 0.35,
+      "pitch_drop": 0.38,
+      "humanize": 0.16,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0,
+      "file_path": null,
+      "loop_file": true,
+      "ducks_others": false,
+      "duck_depth": 0.6
+    },
+    {
+      "name": "Brown bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.12,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "decay_ms": 190.0,
+      "strike_ms": 26.0,
+      "tone": 0.35,
+      "pitch_drop": 0.38,
+      "humanize": 0.16,
+      "noise_color": "brown",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 700.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0,
+      "file_path": null,
+      "loop_file": true,
+      "ducks_others": false,
+      "duck_depth": 0.6
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "target": {
+          "kind": "layer",
+          "index": 0,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 3.8,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 90.0,
+            "value": 4.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 1920.0,
+            "value": 4.0,
+            "curve": "hold"
+          }
+        ]
+      },
+      {
+        "target": {
+          "kind": "layer",
+          "index": 1,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 3.8,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 90.0,
+            "value": 4.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 1920.0,
+            "value": 4.0,
+            "curve": "hold"
+          }
+        ]
+      }
+    ],
+    "duration_s": 1920.0,
+    "fade_out_s": 40.0
+  }
+}

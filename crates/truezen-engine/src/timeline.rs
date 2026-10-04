@@ -52,6 +52,14 @@ pub enum LayerParam {
     Duty,
     RampMs,
     Depth,
+    /// Drum shape. Like the gate parameters these are read fresh at each
+    /// strike, so a change lands on a strike boundary rather than part-way
+    /// through one.
+    DecayMs,
+    StrikeMs,
+    Tone,
+    PitchDrop,
+    Humanize,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
