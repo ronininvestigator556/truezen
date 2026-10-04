@@ -79,8 +79,15 @@ than part-way through the current one.
 is not a metronome, but the entrainment rate is the one thing that has to stay
 exactly where you put it.
 
-**Shamanic Journey** follows the Harner structure: steady drive, then a rapid
-callback roll to bring you back, then a few slow beats before silence.
+**Shamanic Journey** (30 min) follows the Harner structure: steady drive, then
+a rapid callback roll to bring you back, then slow beats before silence.
+
+**Deep Journey** (60 min) departs from it deliberately. The traditional method
+is a constant rate; this one descends — fifteen minutes at 4.5, a slow fall to
+3.8 held for twenty minutes at the bottom, then back up before the callback.
+3.8 is about the floor: below roughly 3.5 the strikes stop reading as a drive
+and start sounding like separate thuds. Its drum is warmer and softer, because
+an hour of bright beater is wearing.
 
 The **carrier** is the pitch you actually hear. Binaural beat perception works
 best with carriers between roughly 100 and 500 Hz and falls off above about
@@ -273,8 +280,9 @@ Fourteen presets ship with the app. Each is a timeline, not a fixed setting.
 | Schumann Ground | relaxation | sustained 7.83 Hz, runs until you stop it |
 | Body Relaxation | relaxation | 3.5 Hz delta on a low 111 Hz carrier |
 | Morning Activation | energy | 6 → 18 Hz over eight minutes |
-| Shamanic Journey | exploration | frame drum at 4.5 strikes/sec with matched binaural theta, callback roll, return |
-| Lower World Drum | exploration | deeper 4 Hz drum held for half an hour, no callback |
+| Shamanic Journey | exploration | 30 min — frame drum at 4.5 strikes/sec with matched binaural theta, callback roll, return |
+| Deep Journey | exploration | 60 min — staged descent to 3.8 Hz, twenty minutes at depth, long return |
+| Lower World Drum | exploration | 32 min — deeper 4 Hz drum held throughout, no callback |
 
 ## Safety
 
