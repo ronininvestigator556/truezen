@@ -46,6 +46,7 @@ stacked together.
 | **Monaural** | Both tones are summed into both channels, so the beat is real amplitude modulation. | Works on speakers. |
 | **Isochronic** | One tone, switched on and off at the beat rate with a soft raised-cosine edge. | Works on speakers. The most obvious of the three. |
 | **Noise** | Filtered white, pink or brown noise. | Anything. Masks the room and gives the tones something to sit in. |
+| **Drum** | A synthesised struck frame drum. The strike rate *is* the beat frequency. | Anything. |
 | **Audio file** | Your own recording — music, rain, a spoken guidance track. | Anything. |
 
 Beat frequencies are conventionally grouped into bands, and TrueZen labels
@@ -59,6 +60,27 @@ whatever you dial in:
 | SMR | 12–15 Hz | calm focus |
 | beta | 15–30 Hz | alert, analytical |
 | gamma | above 30 Hz | concentration |
+
+### On the drum
+
+Shamanic journey drumming runs at roughly four to four and a half strikes a
+second — which is theta. The drum is not an accompaniment to the entrainment;
+the drum **is** the entrainment. That is why TrueZen synthesises it rather than
+playing a recording: the rate stays dialable, and a binaural layer can drive
+the same frequency underneath so the acoustic pulse and the binaural beat
+reinforce each other.
+
+Each strike is a pitched body whose pitch falls as the head slackens, plus a
+band-passed noise burst for the beater. `Ring`, `Beater`, `Tone`, `Pitch drop`
+and `Humanize` shape it, and all five take effect on the next strike rather
+than part-way through the current one.
+
+`Humanize` varies the weight of each strike but never its timing — a drummer
+is not a metronome, but the entrainment rate is the one thing that has to stay
+exactly where you put it.
+
+**Shamanic Journey** follows the Harner structure: steady drive, then a rapid
+callback roll to bring you back, then a few slow beats before silence.
 
 The **carrier** is the pitch you actually hear. Binaural beat perception works
 best with carriers between roughly 100 and 500 Hz and falls off above about
@@ -251,6 +273,8 @@ Fourteen presets ship with the app. Each is a timeline, not a fixed setting.
 | Schumann Ground | relaxation | sustained 7.83 Hz, runs until you stop it |
 | Body Relaxation | relaxation | 3.5 Hz delta on a low 111 Hz carrier |
 | Morning Activation | energy | 6 → 18 Hz over eight minutes |
+| Shamanic Journey | exploration | frame drum at 4.5 strikes/sec with matched binaural theta, callback roll, return |
+| Lower World Drum | exploration | deeper 4 Hz drum held for half an hour, no callback |
 
 ## Safety
 
@@ -296,7 +320,7 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
 ### Tests
 
 ```bash
-cargo test --release                                 # 105 tests, no hardware needed
+cargo test --release                                 # 112 tests, no hardware needed
 cargo test --release -p truezen-host -- --ignored    # 8 more, needs an audio device
 npm run check                                        # frontend types
 ```

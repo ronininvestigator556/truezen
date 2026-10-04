@@ -32,6 +32,15 @@ pub enum LayerKind {
     /// guidance track. The samples arrive from the host; the engine never
     /// touches the filesystem.
     File,
+    /// A struck frame drum, synthesised: a pitched body with a falling pitch
+    /// envelope plus a filtered noise transient for the skin contact.
+    ///
+    /// Not a gated sine. Shamanic journey drumming runs at roughly four to
+    /// four and a half strikes per second, which *is* theta -- the drum is the
+    /// entrainment rather than an accompaniment to it. Synthesising rather
+    /// than sampling keeps the rate dialable to any frequency, which is the
+    /// whole point.
+    Drum,
 }
 
 fn t() -> bool {
@@ -63,6 +72,21 @@ fn default_q() -> f64 {
 }
 fn default_duck() -> f64 {
     0.6
+}
+fn default_decay_ms() -> f64 {
+    190.0
+}
+fn default_strike_ms() -> f64 {
+    26.0
+}
+fn default_tone() -> f64 {
+    0.35
+}
+fn default_pitch_drop() -> f64 {
+    0.38
+}
+fn default_humanize() -> f64 {
+    0.16
 }
 
 /// Serialisable layer settings. This is the on-disk preset shape, so every
@@ -114,6 +138,27 @@ pub struct LayerConfig {
     #[serde(default)]
     pub am_depth: f64,
 
+    // --- drum ---
+    /// How long the drum body rings, to roughly 5% of its level.
+    #[serde(default = "default_decay_ms")]
+    pub decay_ms: f64,
+    /// How long the stick-on-skin transient lasts. Much shorter than the body.
+    #[serde(default = "default_strike_ms")]
+    pub strike_ms: f64,
+    /// 0 is all body and deep, 1 is all transient and clicky. Frame drums sit
+    /// low: most of the sound is the head, not the beater.
+    #[serde(default = "default_tone")]
+    pub tone: f64,
+    /// How far the body pitch falls across a strike, as a fraction of the
+    /// carrier. A drum head is tightest at the moment of impact.
+    #[serde(default = "default_pitch_drop")]
+    pub pitch_drop: f64,
+    /// Strike-to-strike variation in weight and pitch. Timing is deliberately
+    /// left exact -- varying it would smear the entrainment rate, which is the
+    /// one thing that has to stay put.
+    #[serde(default = "default_humanize")]
+    pub humanize: f64,
+
     // --- noise ---
     #[serde(default)]
     pub noise_color: NoiseColor,
@@ -161,6 +206,11 @@ impl Default for LayerConfig {
             depth: one(),
             am_rate_hz: 0.0,
             am_depth: 0.0,
+            decay_ms: default_decay_ms(),
+            strike_ms: default_strike_ms(),
+            tone: default_tone(),
+            pitch_drop: default_pitch_drop(),
+            humanize: default_humanize(),
             noise_color: NoiseColor::default(),
             filter_mode: FilterMode::default(),
             filter_cutoff_hz: default_cutoff(),
@@ -215,6 +265,17 @@ pub struct Layer {
     lfo: Phasor,
     am: Phasor,
 
+    /// Per-strike state for a drum layer. Both envelopes decay exponentially
+    /// from the moment of impact.
+    body_env: f64,
+    strike_env: f64,
+    body_decay: f64,
+    strike_decay: f64,
+    /// Weight of the strike currently ringing, from `humanize`.
+    strike_gain: f64,
+    /// Samples since the last impact, for the brief attack ramp.
+    since_strike: u32,
+
     /// Attached by the host for a file layer. Absent means the layer is
     /// silent, which is what a preset referencing a missing file produces.
     voice: Option<Voice>,
@@ -261,6 +322,12 @@ impl Layer {
             // Start at trough so a breathing cue swells in rather than
             // beginning at full level.
             am: Phasor::with_phase(0.75),
+            body_env: 0.0,
+            strike_env: 0.0,
+            body_decay: 0.0,
+            strike_decay: 0.0,
+            strike_gain: 1.0,
+            since_strike: u32::MAX,
             voice: None,
         };
         layer.refresh_filter();
@@ -355,6 +422,26 @@ impl Layer {
         self.voice.as_ref().is_some_and(Voice::starved)
     }
 
+    pub fn set_decay_ms(&mut self, ms: f64) {
+        self.config.decay_ms = ms.max(1.0);
+    }
+
+    pub fn set_strike_ms(&mut self, ms: f64) {
+        self.config.strike_ms = ms.max(1.0);
+    }
+
+    pub fn set_tone(&mut self, tone: f64) {
+        self.config.tone = tone.clamp(0.0, 1.0);
+    }
+
+    pub fn set_pitch_drop(&mut self, drop: f64) {
+        self.config.pitch_drop = drop.clamp(0.0, 4.0);
+    }
+
+    pub fn set_humanize(&mut self, amount: f64) {
+        self.config.humanize = amount.clamp(0.0, 1.0);
+    }
+
     pub fn set_filter(&mut self, cutoff_hz: f64, q: f64) {
         self.config.filter_cutoff_hz = cutoff_hz;
         self.config.filter_q = q;
@@ -388,6 +475,85 @@ impl Layer {
     #[inline]
     pub fn is_silent(&self) -> bool {
         !self.config.enabled && self.gain.is_settled() && self.gain.current() <= 0.0
+    }
+
+    /// Decay coefficient reaching ~5% after `ms`.
+    #[inline]
+    fn decay_coeff(ms: f64, sample_rate: f64) -> f64 {
+        let tau = (ms.max(1.0) / 1000.0) / 3.0;
+        (-1.0 / (tau * sample_rate)).exp()
+    }
+
+    /// One sample of a struck frame drum.
+    ///
+    /// Two voices in parallel: a body sine whose pitch falls across the hit,
+    /// and a band-passed noise burst for the beater. The body phasor is reset
+    /// on impact so the attack always begins at a zero crossing -- that alone
+    /// removes the step a percussive onset would otherwise put in the signal.
+    #[inline]
+    fn drum(&mut self, carrier: f64, beat: f64) -> f64 {
+        let sr = self.sample_rate;
+
+        if beat >= 0.01 {
+            self.env.set_freq(beat, sr);
+            let p = self.env.tick();
+            if p < self.last_env_phase || self.since_strike == u32::MAX {
+                self.strike(carrier);
+            }
+            self.last_env_phase = p;
+        } else if self.since_strike == u32::MAX {
+            self.strike(carrier);
+        }
+
+        if self.since_strike == u32::MAX {
+            return 0.0;
+        }
+
+        // A real head takes a moment to move. Without this the noise burst
+        // starts on a discontinuity and splatters across the spectrum.
+        const ATTACK_MS: f64 = 1.5;
+        let attack_samples = (ATTACK_MS / 1000.0 * sr).max(1.0);
+        let attack = (self.since_strike as f64 / attack_samples).min(1.0);
+        self.since_strike = self.since_strike.saturating_add(1);
+
+        // The head is tightest at impact and slackens as it rings.
+        let drop = self.config.pitch_drop.clamp(0.0, 4.0);
+        self.osc_a
+            .set_freq(carrier * (1.0 + drop * self.body_env), sr);
+        let body = self.osc_a.tick_wave(Waveform::Sine) * self.body_env;
+
+        let beater = self
+            .svf_l
+            .tick(self.noise_l.tick(NoiseColor::White), FilterMode::BandPass)
+            * self.strike_env;
+
+        self.body_env *= self.body_decay;
+        self.strike_env *= self.strike_decay;
+
+        let tone = self.config.tone.clamp(0.0, 1.0);
+        (body * (1.0 - tone) + beater * tone) * attack * self.strike_gain
+    }
+
+    /// Begin a new strike.
+    fn strike(&mut self, carrier: f64) {
+        let sr = self.sample_rate;
+        // Read the shape fresh each hit, so edits land on a strike boundary
+        // rather than part-way through one.
+        self.body_decay = Self::decay_coeff(self.config.decay_ms, sr);
+        self.strike_decay = Self::decay_coeff(self.config.strike_ms, sr);
+
+        let h = self.config.humanize.clamp(0.0, 1.0);
+        // Weight varies, timing does not: a drummer is not a metronome, but
+        // the entrainment rate has to stay exactly where it was set.
+        self.strike_gain = 1.0 - h * 0.5 * (self.noise_r.tick(NoiseColor::White).abs());
+        let detune = 1.0 + h * 0.03 * self.noise_r.tick(NoiseColor::White);
+
+        self.body_env = 1.0;
+        self.strike_env = 1.0;
+        self.since_strike = 0;
+        // Start at a zero crossing so the onset is a ramp, not a step.
+        self.osc_a.reset();
+        self.osc_a.set_freq(carrier * detune, sr);
     }
 
     /// The isochronic gate value for the current envelope phase.
@@ -468,6 +634,10 @@ impl Layer {
             LayerKind::Isochronic => {
                 self.osc_a.set_freq(carrier, sr);
                 let m = self.osc_a.tick_wave(wave) * self.envelope(beat);
+                (m, m)
+            }
+            LayerKind::Drum => {
+                let m = self.drum(carrier, beat);
                 (m, m)
             }
             LayerKind::File => match self.voice.as_mut() {
