@@ -11,6 +11,7 @@ pub const FACTORY_JSON: &[&str] = &[
     include_str!("../presets/body-relaxation.json"),
     include_str!("../presets/creative-reverie.json"),
     include_str!("../presets/deep-focus-flow.json"),
+    include_str!("../presets/deep-journey.json"),
     include_str!("../presets/deep-theta.json"),
     include_str!("../presets/gamma-concentration.json"),
     include_str!("../presets/lower-world-drum.json"),
@@ -46,7 +47,7 @@ mod tests {
     #[test]
     fn factory_presets_are_all_valid() {
         let presets = load_all();
-        assert_eq!(presets.len(), 16);
+        assert_eq!(presets.len(), 17);
         for p in &presets {
             p.validate().unwrap_or_else(|e| panic!("{}: {e}", p.id));
             assert!(!p.name.is_empty(), "{} has no name", p.id);

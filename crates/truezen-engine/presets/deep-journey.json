@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
-  "id": "shamanic-journey",
-  "name": "Shamanic Journey",
+  "id": "deep-journey",
+  "name": "Deep Journey",
   "goal": "exploration",
-  "description": "Thirty minutes. A frame drum at four and a half strikes a second \u2014 the classic journey rate, which is also theta \u2014 with a binaural layer driving the same frequency underneath. Twenty-three minutes of steady drive, then the rapid callback roll, then slow beats to return on.",
+  "description": "A full hour, and a staged one: fifteen minutes at the classic 4.5, a slow descent to 3.8 held for twenty minutes at the bottom, then back up before a long callback and an unhurried return. The descent is a departure from the traditional constant-rate drive \u2014 the drum is warmer and softer than the thirty-minute journey, because an hour of bright beater is wearing.",
   "requires_headphones": true,
-  "master_gain": 0.7,
+  "master_gain": 0.66,
   "layers": [
     {
-      "name": "Frame drum",
+      "name": "Deep frame drum",
       "kind": "drum",
       "enabled": true,
-      "carrier_hz": 88.0,
+      "carrier_hz": 78.0,
       "beat_hz": 4.5,
-      "gain": 0.42,
+      "gain": 0.4,
       "pan": 0.0,
       "waveform": "sine",
       "duty": 0.5,
@@ -21,15 +21,15 @@
       "depth": 1.0,
       "am_rate_hz": 0.0,
       "am_depth": 0.0,
-      "decay_ms": 190.0,
-      "strike_ms": 26.0,
-      "tone": 0.35,
-      "pitch_drop": 0.38,
-      "humanize": 0.16,
+      "decay_ms": 240.0,
+      "strike_ms": 22.0,
+      "tone": 0.26,
+      "pitch_drop": 0.4,
+      "humanize": 0.18,
       "noise_color": "pink",
       "filter_mode": "low_pass",
-      "filter_cutoff_hz": 2200.0,
-      "filter_q": 0.9,
+      "filter_cutoff_hz": 1600.0,
+      "filter_q": 0.8,
       "lfo_rate_hz": 0.0,
       "lfo_depth": 0.0,
       "file_path": null,
@@ -41,7 +41,7 @@
       "name": "Theta drive",
       "kind": "binaural",
       "enabled": true,
-      "carrier_hz": 136.1,
+      "carrier_hz": 120.0,
       "beat_hz": 4.5,
       "gain": 0.15,
       "pan": 0.0,
@@ -73,7 +73,7 @@
       "enabled": true,
       "carrier_hz": 200.0,
       "beat_hz": 10.0,
-      "gain": 0.09,
+      "gain": 0.1,
       "pan": 0.0,
       "waveform": "sine",
       "duty": 0.5,
@@ -88,10 +88,10 @@
       "humanize": 0.16,
       "noise_color": "pink",
       "filter_mode": "low_pass",
-      "filter_cutoff_hz": 1100.0,
+      "filter_cutoff_hz": 900.0,
       "filter_q": 0.707,
-      "lfo_rate_hz": 0.04,
-      "lfo_depth": 0.4,
+      "lfo_rate_hz": 0.03,
+      "lfo_depth": 0.5,
       "file_path": null,
       "loop_file": true,
       "ducks_others": false,
@@ -109,36 +109,51 @@
         "points": [
           {
             "at_s": 0.0,
-            "value": 4.0,
+            "value": 4.2,
             "curve": "exponential"
           },
           {
-            "at_s": 90.0,
+            "at_s": 120.0,
             "value": 4.5,
             "curve": "exponential"
+          },
+          {
+            "at_s": 900.0,
+            "value": 4.5,
+            "curve": "hold"
           },
           {
             "at_s": 1500.0,
-            "value": 4.5,
-            "curve": "hold"
-          },
-          {
-            "at_s": 1560.0,
-            "value": 16.0,
+            "value": 3.8,
             "curve": "exponential"
           },
           {
-            "at_s": 1650.0,
-            "value": 16.0,
+            "at_s": 2700.0,
+            "value": 3.8,
             "curve": "hold"
           },
           {
-            "at_s": 1710.0,
+            "at_s": 3150.0,
             "value": 4.5,
             "curve": "exponential"
           },
           {
-            "at_s": 1800.0,
+            "at_s": 3210.0,
+            "value": 16.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3330.0,
+            "value": 16.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3420.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3600.0,
             "value": 4.5,
             "curve": "hold"
           }
@@ -153,43 +168,58 @@
         "points": [
           {
             "at_s": 0.0,
-            "value": 4.0,
+            "value": 4.2,
             "curve": "exponential"
           },
           {
-            "at_s": 90.0,
+            "at_s": 120.0,
             "value": 4.5,
             "curve": "exponential"
+          },
+          {
+            "at_s": 900.0,
+            "value": 4.5,
+            "curve": "hold"
           },
           {
             "at_s": 1500.0,
-            "value": 4.5,
-            "curve": "hold"
-          },
-          {
-            "at_s": 1560.0,
-            "value": 16.0,
+            "value": 3.8,
             "curve": "exponential"
           },
           {
-            "at_s": 1650.0,
-            "value": 16.0,
+            "at_s": 2700.0,
+            "value": 3.8,
             "curve": "hold"
           },
           {
-            "at_s": 1710.0,
+            "at_s": 3150.0,
             "value": 4.5,
             "curve": "exponential"
           },
           {
-            "at_s": 1800.0,
+            "at_s": 3210.0,
+            "value": 16.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3330.0,
+            "value": 16.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3420.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3600.0,
             "value": 4.5,
             "curve": "hold"
           }
         ]
       }
     ],
-    "duration_s": 1800.0,
-    "fade_out_s": 30.0
+    "duration_s": 3600.0,
+    "fade_out_s": 60.0
   }
 }
