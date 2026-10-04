@@ -61,6 +61,33 @@ whatever you dial in:
 | beta | 15–30 Hz | alert, analytical |
 | gamma | above 30 Hz | concentration |
 
+### Playing on a speaker
+
+Binaural layers are the only thing that genuinely needs headphones. Everything
+else — isochronic, monaural, noise and the drum — is real modulation in the
+air and carries across a room.
+
+The preset list marks anything containing a binaural layer, and the sleep beds
+and `(Speaker)` journeys contain none. In a speaker journey the binaural layer
+is *replaced* rather than dropped: an isochronic tone gated at the same rate
+opens on each drum strike, putting sustained modulated energy behind the drum's
+transient. The two pulse together rather than flamming, which
+`a_drum_and_an_isochronic_layer_pulse_together` checks.
+
+### All night
+
+**Pink Noise** and **Brown Noise** are ten hours of exactly that and nothing
+else. The `& Delta` versions add a soft isochronic pulse that walks down into
+delta over the first twenty-five minutes and has faded out entirely by fifty —
+it is there to get you to sleep, not to run all night.
+
+Ten hours is 1.7 billion samples, and brown noise is a random walk held in
+check only by its leak, so `brown_noise_stays_bounded_across_a_full_night`
+runs the whole duration and checks it never wanders off centre.
+
+Rendering one of these to a file would produce about 10 GB. For a phone, loop
+a short render instead.
+
 ### On the drum
 
 Shamanic journey drumming runs at roughly four to four and a half strikes a
@@ -274,6 +301,10 @@ Fourteen presets ship with the app. Each is a timeline, not a fixed setting.
 | Deep Theta | meditation | 10 → 4.5 Hz over twenty, long hold, deliberate climb back |
 | Stack — Expanded State | exploration | three binaural layers at 4, 7 and 10 Hz, emphasis shifting down |
 | Sleep Onset | sleep | 8 → 2.5 Hz over twenty-five, four-minute fade to silence |
+| Pink Noise | sleep | 10 hours, nothing but pink — speaker-safe |
+| Brown Noise | sleep | 10 hours, nothing but brown — speaker-safe |
+| Pink Noise & Delta | sleep | pink with a delta pulse that fades out by fifty minutes |
+| Brown Noise & Delta | sleep | brown with a delta pulse that fades out by fifty minutes |
 | Power Nap | sleep | twenty minutes exactly, wakes you on a 12 Hz climb |
 | Lucid / REM Window | exploration | 4.5 Hz theta with 40 Hz gamma bursts in the second half |
 | Anxiety Downshift | relaxation | 10 Hz alpha swelling at 0.1 Hz — breathe with it |
@@ -283,6 +314,8 @@ Fourteen presets ship with the app. Each is a timeline, not a fixed setting.
 | Shamanic Journey | exploration | 30 min — frame drum at 4.5 strikes/sec with matched binaural theta, callback roll, return |
 | Deep Journey | exploration | 60 min — staged descent to 3.8 Hz, twenty minutes at depth, long return |
 | Lower World Drum | exploration | 32 min — deeper 4 Hz drum held throughout, no callback |
+| Shamanic Journey (Speaker) | exploration | the 30-minute journey with isochronic in place of binaural |
+| Deep Journey (Speaker) | exploration | the hour, likewise |
 
 ## Safety
 
@@ -328,7 +361,7 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
 ### Tests
 
 ```bash
-cargo test --release                                 # 112 tests, no hardware needed
+cargo test --release                                 # 116 tests, no hardware needed
 cargo test --release -p truezen-host -- --ignored    # 8 more, needs an audio device
 npm run check                                        # frontend types
 ```

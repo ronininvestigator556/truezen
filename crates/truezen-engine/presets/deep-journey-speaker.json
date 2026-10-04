@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "id": "deep-journey-speaker",
+  "name": "Deep Journey (Speaker)",
+  "goal": "exploration",
+  "description": "The 60-minute journey arranged for a speaker. The drum needs no headphones \u2014 it is a real pulse in the air \u2014 but the binaural layer would be lost, so it is replaced by an isochronic tone gated at the same rate, opening on each strike.",
+  "requires_headphones": false,
+  "master_gain": 0.66,
+  "layers": [
+    {
+      "name": "Deep frame drum",
+      "kind": "drum",
+      "enabled": true,
+      "carrier_hz": 78.0,
+      "beat_hz": 4.5,
+      "gain": 0.4,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "decay_ms": 240.0,
+      "strike_ms": 22.0,
+      "tone": 0.26,
+      "pitch_drop": 0.4,
+      "humanize": 0.18,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 1600.0,
+      "filter_q": 0.8,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0,
+      "file_path": null,
+      "loop_file": true,
+      "ducks_others": false,
+      "duck_depth": 0.6
+    },
+    {
+      "name": "Isochronic drive",
+      "kind": "isochronic",
+      "enabled": true,
+      "carrier_hz": 120.0,
+      "beat_hz": 4.5,
+      "gain": 0.1,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.35,
+      "ramp_ms": 12.0,
+      "depth": 0.8,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "decay_ms": 190.0,
+      "strike_ms": 26.0,
+      "tone": 0.35,
+      "pitch_drop": 0.38,
+      "humanize": 0.16,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 2000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0,
+      "file_path": null,
+      "loop_file": true,
+      "ducks_others": false,
+      "duck_depth": 0.6
+    },
+    {
+      "name": "Pink bed",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.1,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "decay_ms": 190.0,
+      "strike_ms": 26.0,
+      "tone": 0.35,
+      "pitch_drop": 0.38,
+      "humanize": 0.16,
+      "noise_color": "pink",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 900.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.03,
+      "lfo_depth": 0.5,
+      "file_path": null,
+      "loop_file": true,
+      "ducks_others": false,
+      "duck_depth": 0.6
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "target": {
+          "kind": "layer",
+          "index": 0,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 4.2,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 120.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 900.0,
+            "value": 4.5,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1500.0,
+            "value": 3.8,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 2700.0,
+            "value": 3.8,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3150.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3210.0,
+            "value": 16.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3330.0,
+            "value": 16.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3420.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3600.0,
+            "value": 4.5,
+            "curve": "hold"
+          }
+        ]
+      },
+      {
+        "target": {
+          "kind": "layer",
+          "index": 1,
+          "param": "beat"
+        },
+        "points": [
+          {
+            "at_s": 0.0,
+            "value": 4.2,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 120.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 900.0,
+            "value": 4.5,
+            "curve": "hold"
+          },
+          {
+            "at_s": 1500.0,
+            "value": 3.8,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 2700.0,
+            "value": 3.8,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3150.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3210.0,
+            "value": 16.0,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3330.0,
+            "value": 16.0,
+            "curve": "hold"
+          },
+          {
+            "at_s": 3420.0,
+            "value": 4.5,
+            "curve": "exponential"
+          },
+          {
+            "at_s": 3600.0,
+            "value": 4.5,
+            "curve": "hold"
+          }
+        ]
+      }
+    ],
+    "duration_s": 3600.0,
+    "fade_out_s": 60.0
+  }
+}
