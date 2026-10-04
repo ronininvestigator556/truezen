@@ -1280,3 +1280,159 @@ fn a_drum_with_no_rate_strikes_once() {
     assert!(early > 1.0, "the single strike never sounded");
     assert!(late < early * 0.01, "it never stopped");
 }
+
+// ---------------------------------------------------------------------------
+// All-night beds
+// ---------------------------------------------------------------------------
+
+/// Brown noise is a random walk, held in check only by its leak. The sleep
+/// presets run for ten hours — 1.7 billion samples — so "bounded over forty
+/// seconds" is not the guarantee that matters.
+///
+/// Generator-level rather than through the engine: this is about the walk
+/// itself, and it keeps the run to a few seconds.
+#[test]
+fn brown_noise_stays_bounded_across_a_full_night() {
+    use truezen_engine::noise::{NoiseColor, NoiseGen};
+
+    let mut n = NoiseGen::new(0xB40D);
+    let samples = (SR * 3600.0 * 10.0) as u64;
+
+    let mut peak = 0.0f64;
+    let mut sum = 0.0f64;
+    // Worst drift over any ten-minute window, which is what would actually be
+    // audible as the bed wandering off centre.
+    let window = (SR * 600.0) as u64;
+    let mut window_sum = 0.0f64;
+    let mut worst_window = 0.0f64;
+
+    for i in 0..samples {
+        let v = n.tick(NoiseColor::Brown);
+        peak = peak.max(v.abs());
+        sum += v;
+        window_sum += v;
+        if (i + 1) % window == 0 {
+            worst_window = worst_window.max((window_sum / window as f64).abs());
+            window_sum = 0.0;
+        }
+    }
+
+    assert!(peak < 1.5, "brown noise reached {peak} over ten hours");
+    assert!(
+        (sum / samples as f64).abs() < 0.01,
+        "drifted to a DC offset of {}",
+        sum / samples as f64
+    );
+    assert!(
+        worst_window < 0.05,
+        "the bed wandered off centre by {worst_window} within a ten-minute window"
+    );
+}
+
+/// The session clock is an integer sample count, so a ten-hour timeline has to
+/// behave the same at hour nine as at minute one.
+#[test]
+fn a_ten_hour_session_still_tracks_its_timeline() {
+    let preset = factory::by_id("pink-noise-delta").unwrap();
+    assert_eq!(preset.duration_s(), 36_000.0);
+
+    let mut e = engine_for(&preset);
+    // Nine hours in: the pulse has long since faded and the bed plays alone.
+    e.apply(Command::Seek { seconds: 32_400.0 });
+    let mut out = vec![0.0f32; BLOCK * 2];
+    for _ in 0..200 {
+        e.process(&mut out);
+    }
+
+    let m = e.meters();
+    assert!(
+        m.position_s >= 32_400.0,
+        "clock lost its place: {}",
+        m.position_s
+    );
+    assert!(!m.finished, "reported finished nine hours into ten");
+    assert!(out.iter().all(|s| s.is_finite()));
+    assert!(rms(&out) > 0.001, "went silent part-way through the night");
+
+    // The delta pulse is automated to zero by fifty minutes, so what is left
+    // really is a plain bed.
+    assert!(
+        e.state().layers[1].config.gain < 1e-6,
+        "the pulse was still sounding nine hours in"
+    );
+}
+
+/// Speaker presets must not depend on headphones, or the flag misleads.
+#[test]
+fn the_sleep_beds_need_no_headphones() {
+    for id in [
+        "pink-noise",
+        "brown-noise",
+        "pink-noise-delta",
+        "brown-noise-delta",
+    ] {
+        let p = factory::by_id(id).unwrap();
+        assert!(!p.requires_headphones, "{id} was flagged headphones-only");
+        assert!(
+            !p.layers.iter().any(|l| l.kind == LayerKind::Binaural),
+            "{id} contains a binaural layer, which is lost on a speaker"
+        );
+    }
+}
+
+/// A drum and an isochronic tone at the same rate must pulse *together*.
+///
+/// Both layers drive their envelope from a phasor that starts at zero and
+/// follows the same beat, so they should stay locked. If they did not, the
+/// speaker presets would flam — two drives at one rate sitting at an arbitrary
+/// fixed offset, which reads as double-time rather than reinforcement.
+#[test]
+fn a_drum_and_an_isochronic_layer_pulse_together() {
+    let beat = 4.5;
+    let drum = LayerConfig {
+        kind: LayerKind::Drum,
+        carrier_hz: 88.0,
+        beat_hz: beat,
+        gain: 0.8,
+        ..Default::default()
+    };
+    let iso = LayerConfig {
+        kind: LayerKind::Isochronic,
+        carrier_hz: 136.1,
+        beat_hz: beat,
+        gain: 0.8,
+        ramp_ms: 10.0,
+        ..Default::default()
+    };
+
+    // Each alone, so their envelopes can be compared directly. Smoothed over
+    // 3 ms: the raw rectified signal still carries the carrier's ripple, and
+    // an isochronic gate holds a flat plateau whose loudest carrier peak
+    // lands somewhere arbitrary inside it. The rising edge is the event.
+    let only = |cfg: LayerConfig| {
+        let buf = render(&preset_of(vec![cfg]), 12.0);
+        let raw: Vec<f64> = channel(&buf, 0).iter().map(|v| v.abs()).collect();
+        let w = (SR * 0.003) as usize;
+        raw.windows(w)
+            .map(|c| c.iter().sum::<f64>() / w as f64)
+            .collect::<Vec<f64>>()
+    };
+    let d = only(drum);
+    let i = only(iso);
+
+    let period = (SR / beat) as usize;
+    // First point in the cycle where the envelope has clearly risen.
+    let onset = |env: &[f64], cycle: usize| -> usize {
+        let base = cycle * period;
+        let slice = &env[base..base + period];
+        let peak = slice.iter().cloned().fold(0.0f64, f64::max);
+        slice.iter().position(|v| *v > peak * 0.3).unwrap_or(0)
+    };
+
+    for cycle in 20..40 {
+        let gap = (onset(&d, cycle) as i64 - onset(&i, cycle) as i64).abs();
+        let ms = gap as f64 / SR * 1000.0;
+        // Under 25 ms the two read as one event rather than two.
+        assert!(ms < 25.0, "cycle {cycle}: drum and tone {ms:.1} ms apart");
+    }
+}

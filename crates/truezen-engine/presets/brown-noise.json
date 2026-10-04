@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "brown-noise",
+  "name": "Brown Noise",
+  "goal": "sleep",
+  "description": "Ten hours of brown noise and nothing else. Weighted further toward the bottom than pink \u2014 a deep rumble rather than a hiss, like distant surf or a waterfall heard through a wall. The softest of the three for sleeping. No tones, no headphones needed.",
+  "requires_headphones": false,
+  "master_gain": 0.6,
+  "layers": [
+    {
+      "name": "Brown",
+      "kind": "noise",
+      "enabled": true,
+      "carrier_hz": 200.0,
+      "beat_hz": 10.0,
+      "gain": 0.6,
+      "pan": 0.0,
+      "waveform": "sine",
+      "duty": 0.5,
+      "ramp_ms": 8.0,
+      "depth": 1.0,
+      "am_rate_hz": 0.0,
+      "am_depth": 0.0,
+      "decay_ms": 190.0,
+      "strike_ms": 26.0,
+      "tone": 0.35,
+      "pitch_drop": 0.38,
+      "humanize": 0.16,
+      "noise_color": "brown",
+      "filter_mode": "low_pass",
+      "filter_cutoff_hz": 4000.0,
+      "filter_q": 0.707,
+      "lfo_rate_hz": 0.0,
+      "lfo_depth": 0.0,
+      "file_path": null,
+      "loop_file": true,
+      "ducks_others": false,
+      "duck_depth": 0.6
+    }
+  ],
+  "timeline": {
+    "tracks": [],
+    "duration_s": 36000.0,
+    "fade_out_s": 180.0
+  }
+}
